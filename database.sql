@@ -1,5 +1,5 @@
 -- AI Student Performance Predictor Database Schema
--- Created for MySQL/MariaDB
+-- Created for MySQL/MariaDB  
 
 CREATE DATABASE IF NOT EXISTS student_performance_db;
 USE student_performance_db;

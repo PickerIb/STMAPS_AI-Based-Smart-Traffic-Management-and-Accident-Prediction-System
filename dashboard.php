@@ -551,6 +551,29 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
             color: var(--accent-color);
             border-left: 4px solid var(--accent-color);
         }
+        
+        /* Progress indicator styles */
+        .progress-steps .step {
+            padding: 8px 0;
+            margin: 4px 0;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+        
+        .progress-steps .step.active {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .progress-steps .step.completed {
+            background-color: #e8f5e8;
+            color: #2e7d32;
+        }
+        
+        .progress-steps .step i {
+            width: 20px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -1413,13 +1436,16 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                 const formData = new FormData(this);
                 formData.append('action', 'predict');
                 
-                // Show loading state
+                // Show enhanced loading state
                 const submitBtn = $(this).find('button[type="submit"]');
                 const originalText = submitBtn.html();
-                submitBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Generating AI Prediction...').prop('disabled', true);
+                submitBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Processing with AI Engine...').prop('disabled', true);
                 
                 // Disable all form inputs during processing
                 $('#predictionForm input, #predictionForm select').prop('disabled', true);
+                
+                // Show progress indicator
+                showProgressIndicator();
                 
                 $.ajax({
                     url: 'index.php',
@@ -1427,6 +1453,22 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                     data: formData,
                     dataType: 'json',
                     success: function(response) {
+                        // Ensure progress reaches final step before hiding
+                        const modalEl = document.getElementById('predictionProgressModal');
+                        const modalStep = $(modalEl).data('currentStep') || 1;
+                        if (modalEl && modalStep < 5) {
+                            for (let i = 1; i <= 5; i++) {
+                                $(`#step${i}`).toggleClass('completed', i < 5).toggleClass('active', i === 5);
+                                if (i < 5) {
+                                    $(`#step${i} i`).removeClass('fa-spinner fa-spin text-primary text-muted').addClass('fa-check-circle text-success');
+                                }
+                            }
+                            $('#predictionProgressBar').css('width', '100%');
+                            setTimeout(hideProgressIndicator, 100);
+                        } else {
+                            hideProgressIndicator();
+                        }
+                        
                         if (response.success) {
                             // Add original form data to response for summary analysis
                             response.original_data = {
@@ -1446,7 +1488,10 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                             $('html, body').animate({
                                 scrollTop: $('#predictionResultsSection').offset().top - 100
                             }, 500);
-                            showAlert('AI prediction generated successfully!', 'success');
+                            
+                            // Show success message with model info
+                            const modelType = response.model_info?.type || 'AI Engine';
+                            showAlert(`AI prediction generated successfully using ${modelType}!`, 'success');
                         } else {
                             showAlert(response.message || 'Prediction failed', 'danger');
                             if (response.errors) {
@@ -1455,6 +1500,20 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                         }
                     },
                     error: function(xhr, status, error) {
+                        // Ensure modal is closed even on error after showing final step quickly
+                        const modalEl = document.getElementById('predictionProgressModal');
+                        if (modalEl) {
+                            for (let i = 1; i <= 5; i++) {
+                                $(`#step${i}`).toggleClass('completed', i < 5).toggleClass('active', i === 5);
+                                if (i < 5) {
+                                    $(`#step${i} i`).removeClass('fa-spinner fa-spin text-primary text-muted').addClass('fa-check-circle text-success');
+                                }
+                            }
+                            $('#predictionProgressBar').css('width', '100%');
+                            setTimeout(hideProgressIndicator, 200);
+                        } else {
+                            hideProgressIndicator();
+                        }
                         console.error('Prediction error:', error);
                         showAlert('An error occurred during prediction. Please try again.', 'danger');
                     },
@@ -1535,6 +1594,121 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
             errors.forEach(error => {
                 showAlert(error, 'warning');
             });
+        }
+
+        function showProgressIndicator() {
+            // Create progress modal
+            const progressModal = `
+                <div class="modal fade" id="predictionProgressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-body text-center py-4">
+                                <div class="mb-3">
+                                    <i class="fas fa-brain fa-3x text-primary mb-3"></i>
+                                    <h5 class="mb-3">AI Prediction Engine Processing</h5>
+                                </div>
+                                <div class="progress mb-3" style="height: 8px;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                         role="progressbar" style="width: 0%" id="predictionProgressBar"></div>
+                                </div>
+                                <div class="progress-steps">
+                                    <div class="step active" id="step1">
+                                        <i class="fas fa-check-circle text-success me-2"></i>
+                                        <span>Validating input data...</span>
+                                    </div>
+                                    <div class="step" id="step2">
+                                        <i class="fas fa-spinner fa-spin text-primary me-2"></i>
+                                        <span>Initializing AI model...</span>
+                                    </div>
+                                    <div class="step" id="step3">
+                                        <i class="fas fa-spinner text-muted me-2"></i>
+                                        <span>Analyzing performance factors...</span>
+                                    </div>
+                                    <div class="step" id="step4">
+                                        <i class="fas fa-spinner text-muted me-2"></i>
+                                        <span>Generating predictions...</span>
+                                    </div>
+                                    <div class="step" id="step5">
+                                        <i class="fas fa-spinner text-muted me-2"></i>
+                                        <span>Creating recommendations...</span>
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+                                    <small class="text-muted">This may take a few seconds...</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if any
+            $('#predictionProgressModal').remove();
+            
+            // Add modal to body
+            $('body').append(progressModal);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('predictionProgressModal'));
+            modal.show();
+            
+            // Animate progress steps with faster timing
+            let currentStep = 1;
+            const stepTimings = [200, 400, 350, 450, 250]; // Faster timings for each step
+            
+            function updateProgressStep() {
+                if (currentStep <= 5) {
+                    // Update progress bar
+                    const progress = (currentStep / 5) * 100;
+                    $('#predictionProgressBar').css('width', progress + '%');
+                    
+                    // Update steps
+                    $(`.step`).removeClass('active completed');
+                    $(`#step${currentStep}`).addClass('active');
+                    
+                    // Mark previous steps as completed
+                    for (let i = 1; i < currentStep; i++) {
+                        $(`#step${i}`).removeClass('active').addClass('completed');
+                        $(`#step${i} i`).removeClass('fa-spinner fa-spin text-primary text-muted').addClass('fa-check-circle text-success');
+                    }
+                    
+                    // Update step text based on progress
+                    updateStepText(currentStep);
+                    
+                    currentStep++;
+                    
+                    // Schedule next step
+                    if (currentStep <= 5) {
+                        setTimeout(updateProgressStep, stepTimings[currentStep - 1]);
+                    }
+                }
+            }
+            
+            function updateStepText(step) {
+                const stepTexts = {
+                    1: 'Validating input data...',
+                    2: 'Initializing AI model...',
+                    3: 'Analyzing performance factors...',
+                    4: 'Generating predictions...',
+                    5: 'Creating recommendations...'
+                };
+                
+                $(`#step${step} span`).text(stepTexts[step]);
+            }
+            
+            // Start the progress animation
+            setTimeout(updateProgressStep, stepTimings[0]);
+            
+            // Store step info for cleanup
+            $('#predictionProgressModal').data('currentStep', currentStep);
+        }
+
+        function hideProgressIndicator() {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('predictionProgressModal'));
+            if (modal) {
+                modal.hide();
+            }
+            $('#predictionProgressModal').remove();
         }
 
         function displayPredictionResults(response) {
@@ -1633,7 +1807,125 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                             <div class="list-group">
                                 ${recommendations.map(rec => `
                                     <div class="list-group-item">
-                                        <i class="fas fa-arrow-right text-primary me-2"></i>${rec}
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div class="flex-grow-1">
+                                                <i class="fas fa-arrow-right text-primary me-2"></i>
+                                                ${typeof rec === 'string' ? rec : rec.description}
+                                            </div>
+                                            ${typeof rec === 'object' && rec.impact_percentage ? `
+                                                <span class="badge bg-primary">${rec.impact_percentage}% Impact</span>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        ${response.detailed_analysis ? `
+                        <div class="detailed-analysis mt-4">
+                            <h6><i class="fas fa-chart-line text-success me-2"></i>Detailed Analysis</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card bg-light mb-3">
+                                        <div class="card-header">
+                                            <h6 class="mb-0"><i class="fas fa-check-circle text-success me-2"></i>Academic Strengths</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            ${response.detailed_analysis.academic_strengths && response.detailed_analysis.academic_strengths.length > 0 ? 
+                                                response.detailed_analysis.academic_strengths.map(strength => `
+                                                    <div class="d-flex align-items-center mb-2">
+                                                        <i class="fas fa-check text-success me-2"></i>
+                                                        <small>${strength}</small>
+                                                    </div>
+                                                `).join('') : 
+                                                '<small class="text-muted">No specific strengths identified</small>'
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card bg-light mb-3">
+                                        <div class="card-header">
+                                            <h6 class="mb-0"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Areas for Improvement</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            ${response.detailed_analysis.academic_weaknesses && response.detailed_analysis.academic_weaknesses.length > 0 ? 
+                                                response.detailed_analysis.academic_weaknesses.map(weakness => `
+                                                    <div class="d-flex align-items-center mb-2">
+                                                        <i class="fas fa-arrow-up text-warning me-2"></i>
+                                                        <small>${weakness}</small>
+                                                    </div>
+                                                `).join('') : 
+                                                '<small class="text-muted">No major weaknesses identified</small>'
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            ${response.detailed_analysis.lifestyle_factors && response.detailed_analysis.lifestyle_factors.length > 0 ? `
+                            <div class="card bg-light mb-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-heart text-danger me-2"></i>Lifestyle Factors</h6>
+                                </div>
+                                <div class="card-body">
+                                    ${response.detailed_analysis.lifestyle_factors.map(factor => `
+                                        <div class="d-flex align-items-center mb-2">
+                                            <i class="fas fa-info-circle text-info me-2"></i>
+                                            <small>${factor}</small>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            ` : ''}
+                            
+                            ${response.detailed_analysis.social_factors && response.detailed_analysis.social_factors.length > 0 ? `
+                            <div class="card bg-light mb-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-users text-primary me-2"></i>Social & Engagement Factors</h6>
+                                </div>
+                                <div class="card-body">
+                                    ${response.detailed_analysis.social_factors.map(factor => `
+                                        <div class="d-flex align-items-center mb-2">
+                                            <i class="fas fa-comments text-primary me-2"></i>
+                                            <small>${factor}</small>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
+                        ` : ''}
+                        
+                        ${response.improvement_suggestions && response.improvement_suggestions.length > 0 ? `
+                        <div class="improvement-suggestions mt-4">
+                            <h6><i class="fas fa-target text-warning me-2"></i>Specific Improvement Suggestions</h6>
+                            <div class="row">
+                                ${response.improvement_suggestions.map(suggestion => `
+                                    <div class="col-md-6 mb-3">
+                                        <div class="card h-100">
+                                            <div class="card-header d-flex justify-content-between align-items-center">
+                                                <h6 class="mb-0">${suggestion.area}</h6>
+                                                <span class="badge bg-${suggestion.impact === 'Critical' ? 'danger' : suggestion.impact === 'High' ? 'warning' : 'info'}">${suggestion.impact}</span>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-2">
+                                                    <small class="text-muted">Current: ${suggestion.current}</small><br>
+                                                    <small class="text-muted">Recommended: ${suggestion.recommended}</small>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <div class="d-flex justify-content-between">
+                                                        <small>Improvement Potential:</small>
+                                                        <small class="fw-bold text-success">${suggestion.improvement_potential}</small>
+                                                    </div>
+                                                    <div class="progress" style="height: 6px;">
+                                                        <div class="progress-bar bg-success" style="width: ${suggestion.improvement_potential}%"></div>
+                                                    </div>
+                                                </div>
+                                                <p class="card-text small">${suggestion.specific_advice}</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 `).join('')}
                             </div>

@@ -381,6 +381,63 @@ requireGuest();
                 flex-direction: column;
             }
         }
+        /* Access Granted Overlay */
+        .access-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1055;
+        }
+        .access-card {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+            padding: 28px 32px;
+            text-align: center;
+            width: 100%;
+            max-width: 420px;
+            transform: translateY(10px);
+            opacity: 0;
+            transition: opacity 240ms ease, transform 240ms ease;
+        }
+        .access-overlay.show .access-card {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .checkmark-wrapper {
+            width: 96px;
+            height: 96px;
+            margin: 0 auto 16px;
+            background: #eaf7ef;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+        }
+        .checkmark {
+            color: #27ae60;
+            font-size: 56px;
+            animation: popIn 400ms ease forwards;
+            transform: scale(0.6);
+            opacity: 0;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.6); opacity: 0; }
+            60% { transform: scale(1.15); opacity: 1; }
+            100% { transform: scale(1); }
+        }
+        .access-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 6px;
+        }
+        .access-subtitle {
+            font-size: 0.98rem;
+            color: #4b5563;
+        }
     </style>
 </head>
 <body>
@@ -553,10 +610,10 @@ requireGuest();
                 dataType: 'json',
                 success: function(response) {
                     if (response.success) {
-                        showAlert('success', response.message);
+                        showAccessGranted();
                         setTimeout(() => {
                             window.location.href = 'dashboard.php';
-                        }, 2000);
+                        }, 1800);
                     } else {
                         showAlert('danger', response.message);
                     }
@@ -580,6 +637,36 @@ requireGuest();
                 </div>
             `;
             $('#alertContainer').html(alertHtml);
+        }
+
+        function showAccessGranted() {
+            // Remove any existing overlay
+            $('.access-overlay').remove();
+
+            const overlay = $(`
+                <div class="access-overlay" role="dialog" aria-live="assertive" aria-label="Access Granted">
+                    <div class="access-card">
+                        <div class="checkmark-wrapper">
+                            <i class="fas fa-check checkmark"></i>
+                        </div>
+                        <div class="access-title">Access Granted</div>
+                        <div class="access-subtitle">Welcome back to AI_SAPP</div>
+                    </div>
+                </div>
+            `);
+
+            $('body').append(overlay);
+            // Use reflow to ensure the transition triggers
+            requestAnimationFrame(() => {
+                overlay.css('display', 'flex');
+                overlay.addClass('show');
+            });
+
+            // Auto hide slightly before redirect in caller
+            setTimeout(() => {
+                overlay.removeClass('show');
+                setTimeout(() => overlay.remove(), 200);
+            }, 1500);
         }
     </script>
 </body>

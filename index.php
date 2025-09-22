@@ -3,10 +3,113 @@
 require_once 'config.php';
 session_start();
 
-// Redirect logged-in users to dashboard
+// Redirect logged-in users to dashboard only for normal page loads (not AJAX/action requests)
 if (isLoggedIn()) {
-    header('Location: dashboard.php');
-    exit();
+    $isGetPageLoad = $_SERVER['REQUEST_METHOD'] === 'GET';
+    $hasActionParam = isset($_GET['action']) || isset($_POST['action']);
+    if ($isGetPageLoad && !$hasActionParam) {
+        header('Location: dashboard.php');
+        exit();
+    }
+}
+
+// Python prediction engine integration
+function callPythonPredictionEngine($data) {
+    try {
+        $python_input = json_encode($data);
+        $python_script = __DIR__ . '/prediction_engine.py';
+        $command = "python " . escapeshellarg($python_script) . " 2>&1";
+
+        $descriptorspec = array(
+            0 => array("pipe", "r"),
+            1 => array("pipe", "w"),
+            2 => array("pipe", "w")
+        );
+
+        $process = proc_open($command, $descriptorspec, $pipes);
+
+        if (!is_resource($process)) {
+            return [
+                'success' => false,
+                'error' => 'proc_open_failed',
+                'message' => 'Unable to start Python process'
+            ];
+        }
+
+        // Write input json then close stdin
+        fwrite($pipes[0], $python_input);
+        fclose($pipes[0]);
+
+        // Set non-blocking
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
+
+        $output = '';
+        $errors = '';
+        $timeoutSeconds = 6; // hard timeout to avoid hanging UI
+        $start = microtime(true);
+
+        while (true) {
+            $read = [$pipes[1], $pipes[2]];
+            $write = null;
+            $except = null;
+
+            // Wait up to 200ms for new data
+            if (stream_select($read, $write, $except, 0, 200000) !== false) {
+                foreach ($read as $r) {
+                    if ($r === $pipes[1]) { $output .= stream_get_contents($pipes[1]); }
+                    if ($r === $pipes[2]) { $errors .= stream_get_contents($pipes[2]); }
+                }
+            }
+
+            // Check timeout
+            if ((microtime(true) - $start) > $timeoutSeconds) {
+                // Kill process and fallback
+                proc_terminate($process);
+                @proc_close($process);
+                error_log('Python prediction engine timeout after ' . $timeoutSeconds . 's');
+                return [
+                    'success' => false,
+                    'error' => 'timeout',
+                    'message' => 'Python engine timeout'
+                ];
+            }
+
+            // If process exited, break
+            $status = proc_get_status($process);
+            if (!$status['running']) {
+                break;
+            }
+        }
+
+        // Close pipes
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $return_value = proc_close($process);
+
+        if ($return_value === 0 && !empty($output)) {
+            $result = json_decode($output, true);
+            if ($result !== null) {
+                return $result;
+            }
+        }
+
+        if (!empty($errors)) {
+            error_log('Python prediction engine error: ' . $errors);
+        }
+
+        return [
+            'success' => false,
+            'error' => 'Python engine execution failed',
+            'message' => 'Unable to execute Python prediction engine'
+        ];
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'error' => $e->getMessage(),
+            'message' => 'Python engine integration error'
+        ];
+    }
 }
 
 // Helper functions for prediction algorithm
@@ -503,41 +606,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     exit;
                 }
                 
-                // Enhanced AI prediction algorithm
-                $performance_score = calculatePerformanceScore($data);
+                // Add optional fields with defaults
+                $data['motivation_level'] = isset($_POST['motivation_level']) ? intval($_POST['motivation_level']) : 5;
+                $data['student_age'] = isset($_POST['student_age']) ? intval($_POST['student_age']) : 17;
+                $data['current_grade'] = isset($_POST['current_grade']) ? intval($_POST['current_grade']) : 11;
+                $data['learning_style'] = $_POST['learning_style'] ?? 'mixed';
                 
-                // Determine performance category with more sophisticated logic
-                $prediction_result = determinePerformanceCategory($performance_score, $data);
-                $prediction = $prediction_result['category'];
-                $confidence = $prediction_result['confidence'];
+                // Use Python prediction engine
+                $result = callPythonPredictionEngine($data);
                 
-                // Generate realistic confidence scores for all categories
-                $probabilities = generateProbabilityDistribution($prediction, $confidence, $data);
-                
-                // Add risk factors analysis
-                $risk_factors = analyzeRiskFactors($data);
-                
-                // Generate recommendations
-                $recommendations = generateRecommendations($prediction, $data, $risk_factors);
-                
-                // Log prediction for analytics
-                error_log('Prediction made: ' . json_encode([
-                    'student_name' => $_POST['student_name'] ?? 'Anonymous',
-                    'prediction' => $prediction,
-                    'confidence' => $confidence,
-                    'performance_score' => $performance_score
-                ]));
-                
-                echo json_encode([
-                    'success' => true,
-                    'prediction' => $prediction,
-                    'confidence' => $confidence,
-                    'probabilities' => $probabilities,
-                    'performance_score' => round($performance_score, 2),
-                    'risk_factors' => $risk_factors,
-                    'recommendations' => $recommendations,
-                    'timestamp' => date('Y-m-d H:i:s')
-                ]);
+                if ($result['success']) {
+                    // Log prediction for analytics
+                    error_log('AI Prediction made: ' . json_encode([
+                        'student_name' => $_POST['student_name'] ?? 'Anonymous',
+                        'prediction' => $result['prediction'],
+                        'confidence' => $result['confidence'],
+                        'performance_score' => $result['performance_score'],
+                        'model_type' => $result['model_info']['type'] ?? 'Unknown'
+                    ]));
+                    
+                    echo json_encode($result);
+                } else {
+                    // Fallback to PHP prediction if Python fails
+                    error_log('Python prediction failed, using PHP fallback: ' . $result['error']);
+                    
+                    $performance_score = calculatePerformanceScore($data);
+                    $prediction_result = determinePerformanceCategory($performance_score, $data);
+                    $prediction = $prediction_result['category'];
+                    $confidence = $prediction_result['confidence'];
+                    $probabilities = generateProbabilityDistribution($prediction, $confidence, $data);
+                    $risk_factors = analyzeRiskFactors($data);
+                    $recommendations = generateRecommendations($prediction, $data, $risk_factors);
+                    
+                    echo json_encode([
+                        'success' => true,
+                        'prediction' => $prediction,
+                        'confidence' => $confidence,
+                        'probabilities' => $probabilities,
+                        'performance_score' => round($performance_score, 2),
+                        'risk_factors' => $risk_factors,
+                        'recommendations' => $recommendations,
+                        'timestamp' => date('Y-m-d H:i:s'),
+                        'model_info' => [
+                            'type' => 'PHP_Fallback',
+                            'note' => 'Python engine unavailable, using PHP fallback'
+                        ]
+                    ]);
+                }
                 exit;
                 
             } catch (Exception $e) {
