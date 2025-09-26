@@ -142,11 +142,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 -- Insert sample data
 INSERT INTO students (first_name, last_name, dob, gender, socio_econ_index, class) VALUES
-('John', 'Doe', '2005-03-15', 'Male', 0.75, 'Grade 10A'),
-('Jane', 'Smith', '2005-07-22', 'Female', 0.65, 'Grade 10A'),
-('Mike', 'Johnson', '2005-01-10', 'Male', 0.45, 'Grade 10B'),
-('Sarah', 'Williams', '2005-11-05', 'Female', 0.85, 'Grade 10A'),
-('David', 'Brown', '2005-09-18', 'Male', 0.55, 'Grade 10B');
+('MUPAYA', 'Egide', '2005-03-15', 'Male', 0.75, 'Grade 10A'),
+('UWURUKUNDO', 'Alliance Jolie', '2005-07-22', 'Female', 0.65, 'Grade 10A'),
+('CYUZUZO', 'Leon', '2005-01-10', 'Male', 0.45, 'Grade 10B'),
+('IZUKONDI', 'Bienvenue', '2005-11-05', 'Female', 0.85, 'Grade 10A'),
+('ISIMBI', 'Grollia', '2005-09-18', 'Female', 0.55, 'Grade 10B');
 
 INSERT INTO assessments (student_id, term, assignment_avg, quiz_avg, exam_prev, attendance_rate, participation_score, on_time_submissions) VALUES
 (1, 'Term 1', 85.5, 78.0, 82.0, 95.0, 88.0, 92.0),

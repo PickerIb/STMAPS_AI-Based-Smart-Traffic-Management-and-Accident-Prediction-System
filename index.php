@@ -366,6 +366,10 @@ function generateRecommendations($prediction, $data, $risk_factors) {
 // Handle AJAX requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
+    // Ensure clean JSON responses for AJAX: hide notices/warnings and clear output buffer
+    @ini_set('display_errors', 0);
+    @error_reporting(E_ALL & ~E_DEPRECATED & ~E_WARNING & ~E_NOTICE);
+    if (function_exists('ob_get_length')) { while (ob_get_length()) { @ob_end_clean(); } }
     
     switch ($_POST['action']) {
         case 'register':
@@ -576,7 +580,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $errors = [];
                 
                 foreach ($required_fields as $field) {
-                    if (!isset($_POST[$field]) || empty($_POST[$field])) {
+                    if (!array_key_exists($field, $_POST) || $_POST[$field] === '') {
                         $errors[] = "Field '$field' is required";
                     } else {
                         $data[$field] = floatval($_POST[$field]);
@@ -612,8 +616,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $data['current_grade'] = isset($_POST['current_grade']) ? intval($_POST['current_grade']) : 11;
                 $data['learning_style'] = $_POST['learning_style'] ?? 'mixed';
                 
-                // Use Python prediction engine
-                $result = callPythonPredictionEngine($data);
+                // Optionally use Python prediction engine; otherwise PHP-only
+                $result = ['success' => false, 'error' => 'python_disabled'];
+                if (defined('USE_PYTHON_ENGINE') && USE_PYTHON_ENGINE === true) {
+                    $result = callPythonPredictionEngine($data);
+                }
                 
                 if ($result['success']) {
                     // Log prediction for analytics
@@ -624,6 +631,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         'performance_score' => $result['performance_score'],
                         'model_type' => $result['model_info']['type'] ?? 'Unknown'
                     ]));
+                    // Write to audit log for Recent Activity
+                    try {
+                        $database = new Database();
+                        $db = $database->getConnection();
+                        if ($db) {
+                            $db->prepare("INSERT INTO audit_log (user_id, action, table_name, new_values, created_at) VALUES (:user_id, 'prediction', 'predictions', :new_values, NOW())")
+                               ->execute([
+                                   ':user_id' => $_SESSION['user_id'] ?? null,
+                                   ':new_values' => json_encode([
+                                       'student' => $_POST['student_name'] ?? null,
+                                       'prediction' => $result['prediction'] ?? null,
+                                       'confidence' => $result['confidence'] ?? null
+                                   ])
+                               ]);
+                        }
+                    } catch (Exception $e) { /* ignore logging errors */ }
                     
                     echo json_encode($result);
                 } else {
@@ -638,7 +661,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $risk_factors = analyzeRiskFactors($data);
                     $recommendations = generateRecommendations($prediction, $data, $risk_factors);
                     
-                    echo json_encode([
+                    $responsePayload = [
                         'success' => true,
                         'prediction' => $prediction,
                         'confidence' => $confidence,
@@ -651,7 +674,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             'type' => 'PHP_Fallback',
                             'note' => 'Python engine unavailable, using PHP fallback'
                         ]
-                    ]);
+                    ];
+                    // Write to audit log for Recent Activity
+                    try {
+                        $database = new Database();
+                        $db = $database->getConnection();
+                        if ($db) {
+                            $db->prepare("INSERT INTO audit_log (user_id, action, table_name, new_values, created_at) VALUES (:user_id, 'prediction', 'predictions', :new_values, NOW())")
+                               ->execute([
+                                   ':user_id' => $_SESSION['user_id'] ?? null,
+                                   ':new_values' => json_encode([
+                                       'student' => $_POST['student_name'] ?? null,
+                                       'prediction' => $prediction,
+                                       'confidence' => $confidence
+                                   ])
+                               ]);
+                        }
+                    } catch (Exception $e) { /* ignore logging errors */ }
+
+                    echo json_encode($responsePayload);
                 }
                 exit;
                 
@@ -678,6 +719,318 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'study_group_participation' => 60,
                 'assignment_completion_rate' => 90
             ]);
+            exit;
+        
+        case 'upload_data':
+            try {
+                if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
+                    echo json_encode(['success' => false, 'message' => 'CSV file is required']);
+                    exit;
+                }
+
+                $tmpPath = $_FILES['csv_file']['tmp_name'];
+                $handle = fopen($tmpPath, 'r');
+                if (!$handle) {
+                    echo json_encode(['success' => false, 'message' => 'Failed to read CSV']);
+                    exit;
+                }
+
+                // Read header and build flexible mapping (accept varying header names)
+                $header = fgetcsv($handle);
+                if (!$header) { echo json_encode(['success' => false, 'message' => 'CSV file is empty']); fclose($handle); exit; }
+                // Remove UTF-8 BOM if present on first cell
+                if (isset($header[0])) {
+                    $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[0]);
+                }
+                $normalize = function($s){ return preg_replace('/[\s_\-]/', '', strtolower($s)); };
+                $normalizedHeader = array_map($normalize, $header);
+
+                // Aliases for required fields
+                $aliases = [
+                    'first_name' => ['first_name','firstname','first name','first-name','fname'],
+                    'last_name' => ['last_name','lastname','last name','last-name','lname','surname'],
+                    'dob' => ['dob','dateofbirth','date_of_birth','date of birth','birthdate','birth_date'],
+                    'gender' => ['gender','sex'],
+                    'class' => ['class','classname','class_name','classroom','grade','section']
+                ];
+
+                $indexMap = [];
+                foreach ($aliases as $key => $candidates) {
+                    $found = -1;
+                    foreach ($candidates as $cand) {
+                        $norm = $normalize($cand);
+                        $pos = array_search($norm, $normalizedHeader, true);
+                        if ($pos !== false) { $found = $pos; break; }
+                    }
+                    if ($found === -1) {
+                        echo json_encode(['success' => false, 'message' => "Missing required column for '$key'. Acceptable names: ".implode(', ', $candidates)]);
+                        fclose($handle);
+                        exit;
+                    }
+                    $indexMap[$key] = $found;
+                }
+
+                $database = new Database();
+                $db = $database->getConnection();
+                if ($db === null) { throw new Exception('DB connection failed'); }
+
+                $insert = $db->prepare("INSERT INTO students (first_name,last_name,dob,gender,class) VALUES (:first_name,:last_name,:dob,:gender,:class)");
+                $count = 0;
+                while (($row = fgetcsv($handle)) !== false) {
+                    if (count($row) === 1 && trim($row[0]) === '') { continue; }
+                    $first = trim((string)($row[$indexMap['first_name']] ?? ''));
+                    $last = trim((string)($row[$indexMap['last_name']] ?? ''));
+                    $dob = trim((string)($row[$indexMap['dob']] ?? ''));
+                    $gender = trim((string)($row[$indexMap['gender']] ?? ''));
+                    $class = trim((string)($row[$indexMap['class']] ?? ''));
+                    if ($first === '' || $last === '' || $dob === '' || $gender === '' || $class === '') { continue; }
+                    try {
+                        $insert->execute([
+                            ':first_name' => $first,
+                            ':last_name' => $last,
+                            ':dob' => $dob,
+                            ':gender' => $gender,
+                            ':class' => $class
+                        ]);
+                        $count++;
+                    } catch (Exception $e) {
+                        // Skip invalid row but keep count of processed
+                        error_log('CSV row insert failed: '.$e->getMessage());
+                    }
+                }
+                fclose($handle);
+
+                // Log upload activity
+                try {
+                    $db->prepare("INSERT INTO audit_log (user_id, action, table_name, new_values, created_at) VALUES (:user_id, :action, :table_name, :new_values, NOW())")
+                       ->execute([
+                           ':user_id' => $_SESSION['user_id'] ?? null,
+                           ':action' => 'upload_csv',
+                           ':table_name' => 'students',
+                           ':new_values' => json_encode(['imported' => $count])
+                       ]);
+                } catch (Exception $e) { /* ignore logging errors */ }
+
+                echo json_encode(['success' => true, 'message' => "Imported $count students successfully"]);
+            } catch (Exception $e) {
+                error_log('Upload error: '.$e->getMessage());
+                echo json_encode(['success' => false, 'message' => 'Upload failed: '.$e->getMessage()]);
+            }
+            exit;
+
+        case 'get_activity':
+            try {
+                $database = new Database();
+                $db = $database->getConnection();
+                if ($db === null) { throw new Exception('DB connection failed'); }
+
+                $page = isset($_POST['page']) ? max(1, (int)$_POST['page']) : 1;
+                $perPage = isset($_POST['per_page']) ? max(1, min(20, (int)$_POST['per_page'])) : 10;
+                $offset = ($page - 1) * $perPage;
+
+                // Total count across sources
+                $predCount = (int)$db->query("SELECT COUNT(*) FROM audit_log WHERE action = 'prediction'")->fetchColumn();
+                $uplCount = (int)$db->query("SELECT COUNT(*) FROM audit_log WHERE action = 'upload_csv'")->fetchColumn();
+                $stuCount = (int)$db->query("SELECT COUNT(*) FROM students")->fetchColumn();
+                $total = $predCount + $uplCount + $stuCount;
+
+                // Unified query with pagination
+                $sql = "SELECT title, created_at, icon, color FROM (
+                            SELECT CONCAT('New prediction completed: ', JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.prediction'))) AS title, created_at, 'fas fa-check' AS icon, '#28a745' AS color FROM audit_log WHERE action = 'prediction'
+                            UNION ALL
+                            SELECT CONCAT('Student data uploaded (', JSON_EXTRACT(new_values, '$.imported'), ' records)') AS title, created_at, 'fas fa-upload' AS icon, '#17a2b8' AS color FROM audit_log WHERE action = 'upload_csv'
+                            UNION ALL
+                            SELECT CONCAT('New student added: ', first_name, ' ', last_name) AS title, created_at, 'fas fa-user-plus' AS icon, '#0d6efd' AS color FROM students
+                        ) t
+                        ORDER BY created_at DESC
+                        LIMIT :limit OFFSET :offset";
+                $stmt = $db->prepare($sql);
+                $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+                $stmt->execute();
+                $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                echo json_encode([
+                    'success' => true,
+                    'activities' => $items,
+                    'pagination' => [
+                        'page' => $page,
+                        'per_page' => $perPage,
+                        'total' => $total,
+                        'pages' => max(1, (int)ceil($total / $perPage))
+                    ]
+                ]);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'message' => 'Failed to load activity: ' . $e->getMessage()]);
+            }
+            exit;
+
+        case 'get_reports':
+            try {
+                $database = new Database();
+                $db = $database->getConnection();
+                if ($db === null) { throw new Exception('DB connection failed'); }
+
+                $reports = [];
+
+                // Performance distribution (fallback to audit_log if predictions table empty)
+                $perfStmt = $db->query("SELECT predicted_label, COUNT(*) as count FROM predictions GROUP BY predicted_label ORDER BY count DESC");
+                $perf = $perfStmt->fetchAll(PDO::FETCH_ASSOC);
+                if (!$perf || count($perf) === 0) {
+                    $alt = $db->prepare("SELECT JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.prediction')) as predicted_label, COUNT(*) as count FROM audit_log WHERE action='prediction' GROUP BY JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.prediction')) ORDER BY count DESC");
+                    $alt->execute();
+                    $perf = $alt->fetchAll(PDO::FETCH_ASSOC);
+                }
+                $reports['performance_distribution'] = $perf;
+
+                // Prediction trends (last 30 days)
+                $trendStmt = $db->query("SELECT DATE(created_at) as date, COUNT(*) as count FROM predictions WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY DATE(created_at) ORDER BY date DESC");
+                $reports['prediction_trends'] = $trendStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Student statistics
+                $stuStmt = $db->query("SELECT 
+                    COUNT(*) as total_students,
+                    COUNT(CASE WHEN gender = 'Male' THEN 1 END) as male_count,
+                    COUNT(CASE WHEN gender = 'Female' THEN 1 END) as female_count,
+                    COUNT(DISTINCT class) as total_classes
+                    FROM students");
+                $reports['student_stats'] = $stuStmt->fetch(PDO::FETCH_ASSOC);
+
+                // Class distribution
+                $classStmt = $db->query("SELECT class, COUNT(*) as count FROM students GROUP BY class ORDER BY count DESC");
+                $reports['class_distribution'] = $classStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Recent predictions with details
+                $recentStmt = $db->query("SELECT 
+                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.student')) as student_name,
+                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.prediction')) as prediction,
+                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.confidence')) as confidence,
+                    created_at
+                    FROM audit_log 
+                    WHERE action = 'prediction' 
+                    ORDER BY created_at DESC 
+                    LIMIT 20");
+                $reports['recent_predictions'] = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                echo json_encode(['success' => true, 'reports' => $reports]);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'message' => 'Failed to load reports: ' . $e->getMessage()]);
+            }
+            exit;
+        
+        case 'update_full_name':
+            try {
+                $fullName = trim($_POST['full_name'] ?? '');
+                if ($fullName === '') { echo json_encode(['success' => false, 'message' => 'Full name is required']); exit; }
+
+                // Persist in session for display; optional: save to DB if you have a users table with name field
+                $_SESSION['user_name'] = $fullName;
+                echo json_encode(['success' => true]);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            }
+            exit;
+
+        case 'change_password':
+            try {
+                $current = $_POST['current_password'] ?? '';
+                $new = $_POST['new_password'] ?? '';
+                if (strlen($new) < 8) { echo json_encode(['success' => false, 'message' => 'New password too short']); exit; }
+
+                // Load current user from DB
+                $database = new Database();
+                $db = $database->getConnection();
+                if ($db === null) { throw new Exception('DB connection failed'); }
+
+                if (!isset($_SESSION['user_id'])) { echo json_encode(['success' => false, 'message' => 'Not authenticated']); exit; }
+                $userId = (int)$_SESSION['user_id'];
+
+                $stmt = $db->prepare("SELECT password_hash FROM users WHERE id = :id");
+                $stmt->bindParam(':id', $userId, PDO::PARAM_INT);
+                $stmt->execute();
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$row || !password_verify($current, $row['password_hash'])) {
+                    echo json_encode(['success' => false, 'message' => 'Current password is incorrect']);
+                    exit;
+                }
+
+                $newHash = password_hash($new, PASSWORD_DEFAULT);
+                $up = $db->prepare("UPDATE users SET password_hash = :ph, updated_at = NOW() WHERE id = :id");
+                $up->bindParam(':ph', $newHash);
+                $up->bindParam(':id', $userId, PDO::PARAM_INT);
+                $up->execute();
+
+                echo json_encode(['success' => true]);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            }
+            exit;
+
+        case 'request_password_reset':
+            try {
+                $identifier = trim($_POST['email'] ?? '');
+                if ($identifier === '') { echo json_encode(['success' => false, 'message' => 'Email or username is required']); exit; }
+
+                $database = new Database();
+                $db = $database->getConnection();
+                if ($db === null) { throw new Exception('DB connection failed'); }
+
+                // Find user by email first, then username
+                $userRow = null;
+                $stmt = $db->prepare("SELECT id, email FROM users WHERE email = :id LIMIT 1");
+                $stmt->execute([':id' => $identifier]);
+                $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$userRow) {
+                    $stmt = $db->prepare("SELECT id, email FROM users WHERE username = :id LIMIT 1");
+                    $stmt->execute([':id' => $identifier]);
+                    $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
+                }
+                if (!$userRow) { echo json_encode(['success' => false, 'message' => 'Account not found']); exit; }
+
+                $token = bin2hex(random_bytes(32));
+                $expiresAt = date('Y-m-d H:i:s', time() + 3600);
+
+                // Store token in user_sessions table
+                $insert = $db->prepare("INSERT INTO user_sessions (user_id, session_token, expires_at) VALUES (:uid, :token, :exp)");
+                $insert->execute([':uid' => $userRow['id'], ':token' => $token, ':exp' => $expiresAt]);
+
+                $resetUrl = APP_URL . '/login.php?reset_token=' . urlencode($token);
+
+                echo json_encode(['success' => true, 'message' => 'Reset link generated', 'reset_url' => $resetUrl]);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            }
+            exit;
+
+        case 'perform_password_reset':
+            try {
+                $token = $_POST['token'] ?? '';
+                $new = $_POST['new_password'] ?? '';
+                if (strlen($token) < 10) { echo json_encode(['success' => false, 'message' => 'Invalid token']); exit; }
+                if (strlen($new) < 8) { echo json_encode(['success' => false, 'message' => 'Password too short']); exit; }
+
+                $database = new Database();
+                $db = $database->getConnection();
+                if ($db === null) { throw new Exception('DB connection failed'); }
+
+                // Lookup valid token
+                $stmt = $db->prepare("SELECT user_id FROM user_sessions WHERE session_token = :t AND expires_at > NOW() LIMIT 1");
+                $stmt->execute([':t' => $token]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$row) { echo json_encode(['success' => false, 'message' => 'Invalid or expired token']); exit; }
+
+                $newHash = password_hash($new, PASSWORD_DEFAULT);
+                $up = $db->prepare("UPDATE users SET password_hash = :ph, updated_at = NOW() WHERE id = :id");
+                $up->execute([':ph' => $newHash, ':id' => $row['user_id']]);
+
+                // Invalidate token
+                $del = $db->prepare("DELETE FROM user_sessions WHERE session_token = :t");
+                $del->execute([':t' => $token]);
+
+                echo json_encode(['success' => true, 'message' => 'Password reset successful']);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            }
             exit;
             
         case 'validate_password':

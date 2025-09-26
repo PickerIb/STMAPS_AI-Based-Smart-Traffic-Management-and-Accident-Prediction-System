@@ -698,21 +698,7 @@ requireGuest();
                 <div class="invalid-feedback"></div>
             </div>
 
-            <div class="social-divider">
-                <span>Or continue with</span>
-            </div>
-
-            <div class="social-buttons">
-                <a href="#" class="btn-social btn-google" id="googleSignup">
-                    <i class="fab fa-google me-2"></i>Google
-                </a>
-                <a href="#" class="btn-social btn-facebook" id="facebookSignup">
-                    <i class="fab fa-facebook-f me-2"></i>Facebook
-                </a>
-                <a href="#" class="btn-social btn-github" id="githubSignup">
-                    <i class="fab fa-github me-2"></i>GitHub
-                </a>
-            </div>
+            
 
             <button type="submit" class="btn btn-register">
                 <span class="btn-text">
@@ -800,12 +786,7 @@ requireGuest();
                 }
             });
 
-            // Social sign-in buttons
-            $('#googleSignup, #facebookSignup, #githubSignup').on('click', function(e) {
-                e.preventDefault();
-                const provider = $(this).attr('id').replace('Signup', '');
-                showAlert('info', `Coming soon: ${provider.charAt(0).toUpperCase() + provider.slice(1)} sign-in`);
-            });
+            // Removed social sign-up buttons
         });
 
         function updatePasswordStrength() {

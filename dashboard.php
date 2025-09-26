@@ -598,12 +598,6 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                 </a>
             </div>
             <div class="nav-item">
-                <a href="#students" class="nav-link" data-section="students">
-                    <i class="fas fa-users nav-icon"></i>
-                    <span class="nav-text">Student Data</span>
-                </a>
-            </div>
-            <div class="nav-item">
                 <a href="#predictions" class="nav-link" data-section="predictions">
                     <i class="fas fa-brain nav-icon"></i>
                     <span class="nav-text">AI Predictions</span>
@@ -711,7 +705,7 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                     </a>
                     <a href="#" class="action-btn fade-in" id="uploadData">
                         <div class="action-icon">
-                            <i class="fas fa-upload"></i>
+                            <i class="fas fa-file-upload"></i>
                         </div>
                         <span>Upload Data</span>
                     </a>
@@ -720,12 +714,6 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                             <i class="fas fa-file-alt"></i>
                         </div>
                         <span>View Reports</span>
-                    </a>
-                    <a href="#" class="action-btn fade-in" id="exportData">
-                        <div class="action-icon">
-                            <i class="fas fa-download"></i>
-                        </div>
-                        <span>Export Data</span>
                     </a>
                 </div>
 
@@ -744,20 +732,6 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
             </div>
 
             <!-- Other Sections (initially hidden) -->
-            <div id="students-section" class="content-section" style="display: none;">
-                <div class="dashboard-card">
-                    <div class="card-header">
-                        <h3 class="card-title">
-                            <i class="fas fa-users"></i>
-                            Students Management
-                        </h3>
-                    </div>
-                    <div id="studentsContent">
-                        <!-- Students content will be loaded via AJAX -->
-                    </div>
-                </div>
-            </div>
-
             <div id="predictions-section" class="content-section" style="display: none;">
                 <div class="dashboard-card">
                     <div class="card-header">
@@ -891,7 +865,6 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                 // Update page title
                 const titles = {
                     'dashboard': 'AI Student Performance Predictor',
-                    'students': 'Student Management',
                     'predictions': 'Performance Predictions',
                     'analytics': 'Analytics Dashboard',
                     'reports': 'Reports & Analytics',
@@ -919,40 +892,6 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                 contentDiv.removeClass('loading');
                 
                 switch(section) {
-                    case 'students':
-                        contentDiv.html(`
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h5>Student Performance Data</h5>
-                                    <p>Total Students in Database: <strong>1,247</strong></p>
-                                    <p>Students with Complete Data: <strong>1,189</strong></p>
-                                    <p>New Students This Month: <strong>58</strong></p>
-                                    <p>Students Ready for AI Analysis: <strong>1,156</strong></p>
-                                </div>
-                                <div class="col-md-6">
-                                    <h5>Recent Student Additions</h5>
-                                    <div class="activity-item">
-                                        <div class="activity-icon" style="background: var(--success-color);">
-                                            <i class="fas fa-user-plus"></i>
-                                        </div>
-                                        <div class="activity-content">
-                                            <div class="activity-title">Student John Doe added to AI system</div>
-                                            <div class="activity-time">2 hours ago</div>
-                                        </div>
-                                    </div>
-                                    <div class="activity-item">
-                                        <div class="activity-icon" style="background: var(--accent-color);">
-                                            <i class="fas fa-database"></i>
-                                        </div>
-                                        <div class="activity-content">
-                                            <div class="activity-title">Student performance data updated</div>
-                                            <div class="activity-time">4 hours ago</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        `);
-                        break;
                     case 'predictions':
                         contentDiv.html(`
                             <div class="row">
@@ -1185,54 +1124,100 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                     case 'reports':
                         contentDiv.html(`
                             <div class="row">
-                                <div class="col-md-12">
-                                    <h5>AI-Generated Reports</h5>
-                                    <p>Generate comprehensive reports using AI analysis of student performance data.</p>
-                                    <div class="quick-actions">
-                                        <a href="#" class="action-btn">
-                                            <div class="action-icon">
-                                                <i class="fas fa-file-pdf"></i>
+                                <div class="col-md-12 mb-3">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div>
+                                            <h5 class="mb-1"><i class="fas fa-chart-line me-2"></i>Reports</h5>
+                                            <small class="text-muted">Auto-generated from recent predictions and student data</small>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-success btn-sm" id="btnExportCSV"><i class="fas fa-file-excel me-1"></i> Export as CSV</button>
+                                            
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <h6 class="card-title">Performance Distribution</h6>
+                                            <canvas id="reportPerfDist" height="220"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <h6 class="card-title">Predictions in Last 30 Days</h6>
+                                            <canvas id="reportTrends" height="220"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <h6 class="card-title">Class Distribution</h6>
+                                            <canvas id="classDistChart" height="220"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <h6 class="card-title">Recent Predictions</h6>
+                                            <div class="table-responsive">
+                                                <table class="table table-sm mb-0">
+                                                    <thead>
+                                                        <tr><th>Student</th><th>Prediction</th><th>Confidence</th><th>When</th></tr>
+                                                    </thead>
+                                                    <tbody id="recentPredTable"><tr><td colspan="4" class="text-muted">Loading...</td></tr></tbody>
+                                                </table>
                                             </div>
-                                            <span>AI Performance Report</span>
-                                        </a>
-                                        <a href="#" class="action-btn">
-                                            <div class="action-icon">
-                                                <i class="fas fa-file-excel"></i>
-                                            </div>
-                                            <span>ML Data Export</span>
-                                        </a>
-                                        <a href="#" class="action-btn">
-                                            <div class="action-icon">
-                                                <i class="fas fa-brain"></i>
-                                            </div>
-                                            <span>AI Analysis Report</span>
-                                        </a>
-                                        <a href="#" class="action-btn">
-                                            <div class="action-icon">
-                                                <i class="fas fa-chart-line"></i>
-                                            </div>
-                                            <span>Prediction Analytics</span>
-                                        </a>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         `);
+                        if (typeof loadReportsData === 'function') { loadReportsData(); }
+                        // Wire up buttons
+                        
+                        $(document).off('click', '#btnExportCSV').on('click', '#btnExportCSV', function(){
+                            exportReportsCSV();
+                        });
+                        
                         break;
                     case 'settings':
                         contentDiv.html(`
                             <div class="row">
                                 <div class="col-md-6">
                                     <h5>AI System Settings</h5>
-                                    <form>
+                                    <form id="profileForm">
                                         <div class="mb-3">
                                             <label class="form-label">Full Name</label>
-                                            <input type="text" class="form-control" value="<?php echo htmlspecialchars($user_name); ?>">
+                                            <input type="text" class="form-control" id="fullName" name="full_name" value="<?php echo htmlspecialchars($user_name); ?>" required>
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label">Email</label>
-                                            <input type="email" class="form-control" value="<?php echo htmlspecialchars($user_email); ?>">
+                                            <input type="email" class="form-control" id="email" name="email" value="<?php echo htmlspecialchars($user_email); ?>" disabled>
+                                            <div class="form-text">Email is managed by admin and cannot be changed.</div>
                                         </div>
                                         <button type="submit" class="btn btn-primary">Save Changes</button>
+                                    </form>
+                                    <hr/>
+                                    <h5>Password Reset</h5>
+                                    <form id="passwordForm">
+                                        <div class="mb-3">
+                                            <label class="form-label">Current Password</label>
+                                            <input type="password" class="form-control" id="currentPassword" name="current_password" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">New Password</label>
+                                            <input type="password" class="form-control" id="newPassword" name="new_password" minlength="8" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Confirm New Password</label>
+                                            <input type="password" class="form-control" id="confirmPassword" name="confirm_password" minlength="8" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-outline-primary">Change Password</button>
                                     </form>
                                 </div>
                                 <div class="col-md-6">
@@ -1338,6 +1323,34 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                     }
                 }
             });
+
+            // Grade Distribution Chart (Analytics section)
+            const gradeEl = document.getElementById('gradeChart');
+            if (gradeEl) {
+                const gradeCtx = gradeEl.getContext('2d');
+                // Build from live predictions if available, else static example
+                $.ajax({
+                    url: 'index.php',
+                    type: 'POST',
+                    data: { action: 'get_reports' },
+                    dataType: 'json'
+                }).done(function(res){
+                    let labels = ['Excellent','Good','Average','Poor'];
+                    let counts = [0,0,0,0];
+                    if (res && res.success && res.reports && res.reports.performance_distribution) {
+                        const dist = res.reports.performance_distribution;
+                        labels = dist.map(x => x.predicted_label);
+                        counts = dist.map(x => Number(x.count));
+                    } else {
+                        counts = [5,9,7,3];
+                    }
+                    new Chart(gradeCtx, {
+                        type: 'bar',
+                        data: { labels, datasets: [{ label: 'Count', data: counts, backgroundColor: ['#28a745','#0d6efd','#ffc107','#dc3545'] }] },
+                        options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+                    });
+                });
+            }
         }
 
         function initializeQuickActions() {
@@ -1348,19 +1361,197 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                 showAlert('Prediction feature is now available! Click "New Prediction" in the predictions section.', 'success');
             });
 
+            // Re-enable Upload Data quick action
             $('#uploadData').on('click', function(e) {
                 e.preventDefault();
-                showAlert('Data upload feature coming soon!', 'info');
+                openUploadDataModal();
             });
 
             $('#viewReports').on('click', function(e) {
                 e.preventDefault();
-                showAlert('Reports feature coming soon!', 'info');
+                $('.nav-link[data-section="reports"]').click();
             });
 
             $('#exportData').on('click', function(e) {
                 e.preventDefault();
                 showAlert('Export feature coming soon!', 'info');
+            });
+        }
+
+        // Reports data loader
+        function loadReportsData() {
+            $.ajax({
+                url: 'index.php',
+                type: 'POST',
+                data: { action: 'get_reports' },
+                dataType: 'json'
+            }).done(function(res){
+                if (!res.success) { return; }
+                const r = res.reports || {};
+
+                // Performance Distribution Pie
+                const pd = r.performance_distribution || [];
+                const pdLabels = (pd && pd.length ? pd : [{predicted_label:'No Data',count:1}]).map(x => x.predicted_label || 'No Data');
+                const pdData = (pd && pd.length ? pd : [{predicted_label:'No Data',count:1}]).map(x => Number(x.count) || 1);
+                if (document.getElementById('reportPerfDist')) {
+                    const ctx = document.getElementById('reportPerfDist').getContext('2d');
+                    if (window._perfChart) { window._perfChart.destroy(); }
+                    window._perfChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: { labels: pdLabels, datasets: [{ data: pdData, backgroundColor: ['#28a745','#0d6efd','#ffc107','#dc3545'] }] },
+                        options: { plugins: { legend: { position: 'bottom' } } }
+                    });
+                }
+
+                // Trends Line
+                const tr = (r.prediction_trends || []).reverse();
+                const tLabels = tr.map(x => x.date);
+                const tData = tr.map(x => Number(x.count));
+                if (document.getElementById('reportTrends')) {
+                    new Chart(document.getElementById('reportTrends'), {
+                        type: 'line',
+                        data: { labels: tLabels, datasets: [{ label: 'Predictions', data: tData, borderColor: '#0d6efd', fill: false }] },
+                        options: { scales: { y: { beginAtZero: true } } }
+                    });
+                }
+
+                // Class Distribution Bar
+                const cd = r.class_distribution || [];
+                const cLabels = cd.map(x => x.class);
+                const cData = cd.map(x => Number(x.count));
+                if (document.getElementById('classDistChart')) {
+                    new Chart(document.getElementById('classDistChart'), {
+                        type: 'bar',
+                        data: { labels: cLabels, datasets: [{ label: 'Students', data: cData, backgroundColor: '#6c757d' }] },
+                        options: { scales: { y: { beginAtZero: true } } }
+                    });
+                }
+
+                // Recent predictions table
+                const rp = r.recent_predictions || [];
+                const rows = rp.map(x => `<tr><td>${x.student_name || '-'}</td><td>${x.prediction}</td><td>${Math.round((x.confidence||0)*100)}%</td><td>${new Date(x.created_at).toLocaleString()}</td></tr>`).join('');
+                $('#recentPredTable').html(rows || '<tr><td colspan="4" class="text-muted">No recent predictions</td></tr>');
+            });
+        }
+
+        // Export: CSV of recent predictions and student stats
+        function exportReportsCSV() {
+            $.ajax({
+                url: 'index.php',
+                type: 'POST',
+                data: { action: 'get_reports' },
+                dataType: 'json'
+            }).done(function(res){
+                if (!res.success) { showAlert('Failed to export reports', 'danger'); return; }
+                const r = res.reports || {};
+                const rows = [['Student','Prediction','Confidence','Created At']];
+                (r.recent_predictions || []).forEach(x => {
+                    rows.push([x.student_name||'', x.prediction||'', Math.round((x.confidence||0)*100)+'%', x.created_at||'']);
+                });
+                const csv = rows.map(a => a.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+                const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'ai_reports_recent_predictions.csv';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        // Print: create a print view of the reports section
+        function printReportsSection() {
+            const printable = $('#reportsContent').html();
+            const w = window.open('', '_blank');
+            w.document.write('<html><head><title>AI Reports</title>');
+            w.document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">');
+            w.document.write('</head><body class="p-3">');
+            w.document.write(printable);
+            w.document.write('</body></html>');
+            w.document.close(); w.focus();
+            setTimeout(() => { w.print(); w.close(); }, 300);
+        }
+
+        // (removed) downloadAllReportCharts
+
+        // Upload Data Modal and handlers
+        function openUploadDataModal() {
+            const modalHtml = `
+                <div class="modal fade" id="uploadDataModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title"><i class="fas fa-file-upload me-2"></i>Upload CSV Data</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label">CSV File</label>
+                                    <input type="file" class="form-control" id="uploadCsvFile" accept=".csv" />
+                                    <div class="form-text">Expected headers: first_name,last_name,dob,gender,class</div>
+                                </div>
+                                <div id="uploadPreview" class="small text-muted"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="confirmUploadBtn" disabled>
+                                    <i class="fas fa-upload me-2"></i>Upload
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+
+            $('#uploadDataModal').remove();
+            $('body').append(modalHtml);
+            const modal = new bootstrap.Modal(document.getElementById('uploadDataModal'));
+            modal.show();
+
+            $('#uploadCsvFile').off('change').on('change', function() {
+                const file = this.files && this.files[0];
+                if (!file) { $('#confirmUploadBtn').prop('disabled', true); return; }
+                $('#uploadPreview').text(`${file.name} • ${(file.size/1024).toFixed(1)} KB`);
+                $('#confirmUploadBtn').prop('disabled', false);
+            });
+
+            $('#confirmUploadBtn').off('click').on('click', function() {
+                const file = $('#uploadCsvFile')[0].files[0];
+                if (!file) return;
+                const fd = new FormData();
+                fd.append('action', 'upload_data');
+                fd.append('csv_file', file);
+                $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Uploading...');
+
+                $.ajax({
+                    url: 'index.php',
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json'
+                }).done(function(res){
+                    if (res.success) {
+                        const msg = res.message || 'Data uploaded successfully';
+                        const pretty = `
+                            <div class="d-flex align-items-start">
+                                <i class="fas fa-check-circle text-success me-2 mt-1"></i>
+                                <div>
+                                    <strong>Upload complete</strong><br/>
+                                    ${msg}
+                                </div>
+                            </div>`;
+                        showAlert(pretty, 'success');
+                        bootstrap.Modal.getInstance(document.getElementById('uploadDataModal')).hide();
+                        $('#uploadDataModal').remove();
+                    } else {
+                        showAlert(res.message || 'Upload failed', 'danger');
+                    }
+                }).fail(function(xhr){
+                    const msg = xhr && xhr.responseText ? xhr.responseText : 'Upload failed. Please check CSV and try again.';
+                    showAlert(msg, 'danger');
+                }).always(function(){
+                    $('#confirmUploadBtn').prop('disabled', false).html('<i class="fas fa-upload me-2"></i>Upload');
+                });
             });
         }
 
@@ -1451,12 +1642,15 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                     url: 'index.php',
                     type: 'POST',
                     data: formData,
+                    processData: false,
+                    contentType: false,
                     dataType: 'json',
+                    timeout: 8000,
                     success: function(response) {
                         // Ensure progress reaches final step before hiding
                         const modalEl = document.getElementById('predictionProgressModal');
                         const modalStep = $(modalEl).data('currentStep') || 1;
-                        if (modalEl && modalStep < 5) {
+                        if (modalEl) {
                             for (let i = 1; i <= 5; i++) {
                                 $(`#step${i}`).toggleClass('completed', i < 5).toggleClass('active', i === 5);
                                 if (i < 5) {
@@ -1464,7 +1658,13 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                                 }
                             }
                             $('#predictionProgressBar').css('width', '100%');
-                            setTimeout(hideProgressIndicator, 100);
+                            // Reveal close button briefly, then auto-hide unless user clicks it
+                            $('#progressCloseBtn').show();
+                            setTimeout(function(){
+                                if ($('#predictionProgressModal').length) {
+                                    hideProgressIndicator();
+                                }
+                            }, 600);
                         } else {
                             hideProgressIndicator();
                         }
@@ -1514,8 +1714,12 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                         } else {
                             hideProgressIndicator();
                         }
-                        console.error('Prediction error:', error);
-                        showAlert('An error occurred during prediction. Please try again.', 'danger');
+                        console.error('Prediction error:', status, error);
+                        if (status === 'timeout') {
+                            showAlert('Prediction request timed out. Please try again.', 'warning');
+                        } else {
+                            showAlert('An error occurred during prediction. Please try again.', 'danger');
+                        }
                     },
                     complete: function() {
                         submitBtn.html(originalText).prop('disabled', false);
@@ -1524,6 +1728,52 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                 });
             });
         }
+
+        // Save profile (full name only; email locked)
+        $(document).on('submit', '#profileForm', function(e) {
+            e.preventDefault();
+            const fullName = $('#fullName').val().trim();
+            if (!fullName) { showAlert('Full name is required', 'warning'); return; }
+            $.ajax({
+                url: 'index.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { action: 'update_full_name', full_name: fullName }
+            }).done(function(res){
+                if (res.success) {
+                    showAlert('Profile updated successfully', 'success');
+                } else {
+                    showAlert(res.message || 'Update failed', 'danger');
+                }
+            }).fail(function(){
+                showAlert('Network error while saving profile', 'danger');
+            });
+        });
+
+        // Change password
+        $(document).on('submit', '#passwordForm', function(e) {
+            e.preventDefault();
+            const current = $('#currentPassword').val();
+            const newp = $('#newPassword').val();
+            const conf = $('#confirmPassword').val();
+            if (newp.length < 8) { showAlert('New password must be at least 8 characters', 'warning'); return; }
+            if (newp !== conf) { showAlert('New passwords do not match', 'warning'); return; }
+            $.ajax({
+                url: 'index.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { action: 'change_password', current_password: current, new_password: newp }
+            }).done(function(res){
+                if (res.success) {
+                    $('#passwordForm')[0].reset();
+                    showAlert('Password changed successfully', 'success');
+                } else {
+                    showAlert(res.message || 'Failed to change password', 'danger');
+                }
+            }).fail(function(){
+                showAlert('Network error while changing password', 'danger');
+            });
+        });
 
         function validatePredictionForm() {
             let isValid = true;
@@ -1635,7 +1885,12 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                                 </div>
                                 <div class="mt-3">
                                     <small class="text-muted">This may take a few seconds...</small>
-                                </div>
+                            </div>
+                            <div class="modal-footer justify-content-center py-2">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="progressCloseBtn" style="display:none;">
+                                    Close
+                                </button>
+                            </div>
                             </div>
                         </div>
                     </div>
@@ -1651,6 +1906,11 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
             // Show modal
             const modal = new bootstrap.Modal(document.getElementById('predictionProgressModal'));
             modal.show();
+
+            // Close button handler (will be revealed at completion)
+            $(document).off('click', '#progressCloseBtn').on('click', '#progressCloseBtn', function() {
+                hideProgressIndicator();
+            });
             
             // Animate progress steps with faster timing
             let currentStep = 1;
@@ -1676,10 +1936,15 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                     updateStepText(currentStep);
                     
                     currentStep++;
+                    // Persist current step so other handlers can know progress
+                    $('#predictionProgressModal').data('currentStep', currentStep);
                     
                     // Schedule next step
                     if (currentStep <= 5) {
                         setTimeout(updateProgressStep, stepTimings[currentStep - 1]);
+                    } else {
+                        // Ensure bar is full when steps complete
+                        $('#predictionProgressBar').css('width', '100%');
                     }
                 }
             }
@@ -2109,50 +2374,49 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
             loadActivityFeed();
         }
 
-        function loadActivityFeed() {
-            const activities = [
-                {
-                    icon: 'fas fa-check',
-                    title: 'New prediction completed',
-                    time: '2 minutes ago',
-                    color: 'var(--success-color)'
-                },
-                {
-                    icon: 'fas fa-upload',
-                    title: 'Student data uploaded',
-                    time: '15 minutes ago',
-                    color: 'var(--accent-color)'
-                },
-                {
-                    icon: 'fas fa-chart-line',
-                    title: 'Performance report generated',
-                    time: '1 hour ago',
-                    color: 'var(--warning-color)'
-                },
-                {
-                    icon: 'fas fa-user-plus',
-                    title: 'New student added to system',
-                    time: '2 hours ago',
-                    color: 'var(--primary-color)'
+        function loadActivityFeed(page = 1) {
+            $.ajax({
+                url: 'index.php',
+                type: 'POST',
+                data: { action: 'get_activity', page: page, per_page: 10 },
+                dataType: 'json'
+            }).done(function(res) {
+                if (!res.success) { return; }
+                const activities = res.activities || [];
+                let activityHtml = '';
+                activities.forEach(activity => {
+                    const when = new Date(activity.created_at).toLocaleString();
+                    activityHtml += `
+                        <div class="activity-item">
+                            <div class="activity-icon" style="background: ${activity.color || 'var(--primary-color)'};">
+                                <i class="${activity.icon || 'fas fa-info'}"></i>
+                            </div>
+                            <div class="activity-content">
+                                <div class="activity-title">${activity.title}</div>
+                                <div class="activity-time">${when}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                // Pagination controls
+                const pg = res.pagination || { page: 1, pages: 1 };
+                let pager = '';
+                if (pg.pages > 1) {
+                    pager = `
+                        <div class="d-flex justify-content-between align-items-center mt-2">
+                            <button class="btn btn-sm btn-outline-secondary" id="actPrev" ${pg.page <= 1 ? 'disabled' : ''}>Previous</button>
+                            <small class="text-muted">Page ${pg.page} of ${pg.pages}</small>
+                            <button class="btn btn-sm btn-outline-secondary" id="actNext" ${pg.page >= pg.pages ? 'disabled' : ''}>Next</button>
+                        </div>`;
                 }
-            ];
 
-            let activityHtml = '';
-            activities.forEach(activity => {
-                activityHtml += `
-                    <div class="activity-item">
-                        <div class="activity-icon" style="background: ${activity.color};">
-                            <i class="${activity.icon}"></i>
-                        </div>
-                        <div class="activity-content">
-                            <div class="activity-title">${activity.title}</div>
-                            <div class="activity-time">${activity.time}</div>
-                        </div>
-                    </div>
-                `;
+                $('#activityFeed').html((activityHtml || '<p class="text-muted">No recent activity</p>') + pager);
+
+                // Wire buttons
+                $('#actPrev').off('click').on('click', function(){ loadActivityFeed(pg.page - 1); });
+                $('#actNext').off('click').on('click', function(){ loadActivityFeed(pg.page + 1); });
             });
-
-            $('#activityFeed').html(activityHtml);
         }
 
         function preventBackAccess() {

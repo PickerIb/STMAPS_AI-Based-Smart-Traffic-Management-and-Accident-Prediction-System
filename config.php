@@ -13,6 +13,11 @@ define('APP_URL', 'http://localhost/AI_SAPP');
 // ML Service Configuration
 define('ML_SERVICE_URL', 'http://localhost:5000');
 define('ML_SERVICE_TIMEOUT', 30);
+// Toggle to control whether PHP should try to use the local Python engine
+// Set to false to force fast PHP-only predictions
+if (!defined('USE_PYTHON_ENGINE')) {
+    define('USE_PYTHON_ENGINE', false);
+}
 
 // Security Configuration
 define('CSRF_TOKEN_NAME', 'csrf_token');
