@@ -1,268 +1,245 @@
-# AI_SAPP - AI Student Academic Performance Predictor
+# AI Student Academic Performance Predictor (AI_SAPP)
 
-A comprehensive machine learning web application that predicts student academic performance using advanced AI algorithms. The system combines PHP backend with Python machine learning engine to provide accurate predictions and detailed analytics.
+A comprehensive web application that uses artificial intelligence to predict student academic performance. The system analyzes multiple factors including academic history, personal habits, and family background to provide accurate predictions and actionable recommendations.
 
-## 🚀 Key Features
+## 🌟 Features
 
-### **Advanced AI Prediction Engine**
-- **Dual Engine Architecture**: PHP backend with Python ML engine for optimal performance
-- **Machine Learning Libraries**: pandas, numpy, matplotlib, scikit-learn, joblib
-- **Multiple Algorithms**: Gradient Boosting, Random Forest, and Weighted Scoring
-- **Real-time Processing**: Fast predictions with progress indicators
-- **Confidence Scoring**: Intelligent confidence levels for all predictions
+### 🎯 AI Prediction Engine
+- **Dual Engine Architecture**: PHP backend with optional Python ML engine
+- **Real-time Predictions**: Fast processing with progress indicators
+- **Performance Categories**: Excellent, Good, Average, Poor with confidence scores
+- **Personalized Recommendations**: AI-generated actionable advice for students
+- **Risk Factor Analysis**: Identifies potential academic challenges
 
-### **Comprehensive Student Analysis**
-- **15+ Input Factors**: Academic, personal, family, and social factors
-- **Performance Categories**: Excellent, Good, Average, Poor with probability distribution
-- **Risk Factor Analysis**: Identifies academic risk factors automatically
-- **Personalized Recommendations**: AI-generated actionable advice
-- **Learning Style Integration**: Tailored recommendations based on learning preferences
-
-### **Modern Web Interface**
-- **Responsive Design**: Works on all devices with Bootstrap 5
+### 📊 Analytics & Reporting
 - **Interactive Dashboard**: Real-time analytics and visualizations
-- **Progress Indicators**: Beautiful loading animations during processing
-- **Form Validation**: Real-time validation with helpful error messages
-- **Export Functionality**: Print and download prediction results
+- **Performance Distribution Charts**: Visual representation of student performance
+- **Prediction Trends**: Historical analysis of predictions over time
+- **Class Distribution**: Breakdown by grade levels and classes
+- **Recent Activity Feed**: Live updates of system activities
+- **Export Functionality**: Download reports as PDF or CSV
 
-## 📊 Performance Categories
+### 📈 Data Management
+- **CSV Data Upload**: Bulk import student data with flexible column mapping
+- **Sample Data Templates**: Pre-configured CSV templates for easy testing
+- **Student Database**: Comprehensive student information management
+- **Audit Logging**: Complete activity tracking and logging
 
-The AI model predicts student performance into four categories:
+### 🔐 User Management
+- **Secure Authentication**: Password-based login system
+- **User Settings**: Profile management and password updates
+- **Session Management**: Secure session handling
+- **Role-based Access**: Different access levels for users
 
-- **Excellent** (4.2+ score): Outstanding academic performance with high confidence
-- **Good** (3.5-4.2 score): Above-average performance with room for improvement
-- **Average** (2.5-3.5 score): Standard performance requiring attention
-- **Poor** (<2.5 score): Below-average performance needing intervention
+## 🚀 Quick Start
 
-## 🎯 Input Features
-
-### **Academic Factors**
-- **Study Hours per Week** (0-50 hours)
-- **Attendance Rate** (0-100%)
-- **Previous GPA (Grade Point Average)** (0.0-4.0 scale)
-- **Assignment Completion Rate** (0-100%)
-- **Study Group Participation** (0-100%)
-
-### **Personal & Lifestyle**
-- **Sleep Hours per Night** (4-12 hours)
-- **Social Media Hours per Day** (0-10 hours)
-- **Extracurricular Hours per Week** (0-20 hours)
-- **Student Age** (13-25 years)
-- **Current Grade Level** (9-16)
-
-### **Family & Background**
-- **Family Income** ($20,000-$200,000)
-- **Parent Education Level** (1-5 scale)
-- **Learning Style** (Visual, Auditory, Kinesthetic, Reading, Mixed)
-- **Motivation Level** (1-10 scale)
-
-## 🛠️ Installation & Setup
-
-### **Prerequisites**
+### Prerequisites
 - PHP 7.4+ with MySQL/MariaDB
-- Python 3.8+ with pip
 - Web server (Apache/Nginx) or XAMPP
-- Git
+- Python 3.8+ (optional, for ML engine)
 
-### **1. Clone the Repository**
-```bash
-git clone <repository-url>
-cd AI_SAPP
-```
+### Installation
 
-### **2. Database Setup**
-```sql
--- Import the database schema
-mysql -u root -p < database.sql
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd AI_SAPP
+   ```
 
--- Or manually create the database
-CREATE DATABASE ai_sapp_db;
-USE ai_sapp_db;
--- Then import database.sql
-```
+2. **Set up the database**
+   ```sql
+   -- Import the database schema
+   mysql -u root -p < database.sql
+   ```
 
-### **3. Install Python Dependencies**
-```bash
-pip install -r requirements.txt
-```
+3. **Configure database connection**
+   Update `config.php` with your database credentials:
+   ```php
+   $host = 'localhost';
+   $dbname = 'ai_sapp_db';
+   $username = 'your_username';
+   $password = 'your_password';
+   ```
 
-### **4. Configure Database Connection**
-Update `config.php` with your database credentials:
-```php
-$host = 'localhost';
-$dbname = 'ai_sapp_db';
-$username = 'your_username';
-$password = 'your_password';
-```
+4. **Install Python dependencies** (optional)
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### **5. Set Up Web Server**
-- **XAMPP**: Place project in `htdocs/AI_SAPP/`
-- **Apache**: Configure virtual host
-- **Nginx**: Set up server block
+5. **Access the application**
+   - XAMPP: `http://localhost/AI_SAPP/`
+   - Production: `http://your-domain.com/`
 
-### **6. Access the Application**
-Open your browser and navigate to:
-- `http://localhost/AI_SAPP/` (XAMPP)
-- `http://your-domain.com/` (Production)
+## 📋 Input Features
+
+The AI system analyzes 15+ factors across multiple categories:
+
+### Academic Factors
+- Study Hours per Week (0-50 hours)
+- Attendance Rate (0-100%)
+- Previous GPA (0.0-4.0 scale)
+- Assignment Completion Rate (0-100%)
+- Study Group Participation (0-100%)
+
+### Personal & Lifestyle
+- Sleep Hours per Night (4-12 hours)
+- Social Media Hours per Day (0-10 hours)
+- Extracurricular Hours per Week (0-20 hours)
+- Student Age (13-25 years)
+- Current Grade Level (9-16)
+
+### Family & Background
+- Family Income ($20,000-$200,000)
+- Parent Education Level (1-5 scale)
+- Learning Style (Visual, Auditory, Kinesthetic, Reading, Mixed)
+- Motivation Level (1-10 scale)
 
 ## 🎮 Usage Guide
 
-### **1. User Registration & Login**
+### 1. User Registration & Login
 - Register a new account with username, email, and password
-- Login with your credentials
-- Access the dashboard with full functionality
+- Login with your credentials to access the dashboard
 
-### **2. Generate AI Predictions**
-1. **Navigate to Predictions**: Click "New Prediction" or go to Predictions section
-2. **Fill Student Data**: Complete the comprehensive form with student information
-3. **Load Sample Data**: Use "Load Sample Data" for quick testing
-4. **Generate Prediction**: Click "Generate AI Prediction" and watch the progress
-5. **View Results**: See detailed prediction with confidence, risk factors, and recommendations
+### 2. Generate AI Predictions
+1. Navigate to the "New Prediction" section
+2. Fill in the comprehensive student data form
+3. Use "Load Sample Data" for quick testing
+4. Click "Generate AI Prediction" and watch the progress
+5. View detailed results with recommendations
 
-### **3. View Analytics**
-- **Dashboard Overview**: Key metrics and recent predictions
-- **Prediction History**: Track all previous predictions
-- **Performance Analytics**: Visual charts and statistics
-- **Export Results**: Download prediction reports
+### 3. Upload Student Data
+1. Click "Upload Data" on the dashboard
+2. Select a CSV file with student information
+3. The system automatically maps columns
+4. View upload success confirmation
 
-## 🔧 Technical Architecture
+### 4. View Reports & Analytics
+1. Click "View Reports" to access analytics
+2. View performance distribution charts
+3. Analyze prediction trends over time
+4. Export data as PDF or CSV
 
-### **Backend Technologies**
+## 🛠️ Technical Architecture
+
+### Backend Technologies
 - **PHP 7.4+**: Main application logic and API endpoints
-- **MySQL/MariaDB**: Database for user management and data storage
-- **Python 3.8+**: Machine learning engine with advanced libraries
+- **MySQL/MariaDB**: Database for data storage
+- **PDO**: Secure database interactions
+- **Session Management**: User authentication and state
 
-### **Python ML Engine**
-- **pandas**: Data manipulation and analysis
-- **numpy**: Numerical computing and array operations
-- **scikit-learn**: Machine learning algorithms and preprocessing
-- **matplotlib**: Data visualization and plotting
-- **joblib**: Model serialization and caching
-
-### **Frontend Technologies**
+### Frontend Technologies
 - **HTML5 & CSS3**: Modern web standards
-- **Bootstrap 5**: Responsive framework and components
-- **JavaScript (jQuery)**: Interactive functionality and AJAX
-- **Font Awesome**: Icons and visual elements
+- **Bootstrap 5**: Responsive framework
+- **JavaScript/jQuery**: Interactive functionality
+- **Chart.js**: Data visualization
+- **Font Awesome**: Icons and UI elements
 
-### **API Endpoints**
+### API Endpoints
 - `POST /index.php?action=login` - User authentication
 - `POST /index.php?action=register` - User registration
 - `POST /index.php?action=predict` - Generate AI predictions
-- `POST /index.php?action=load_sample` - Load sample data
-- `GET /dashboard.php` - Main dashboard interface
-
-## 📈 Model Performance
-
-### **Algorithm Details**
-- **Primary**: Gradient Boosting Regressor (100 estimators)
-- **Fallback**: Weighted Scoring System
-- **Features**: 15+ normalized input features
-- **Training Data**: 2000 synthetic student records
-- **Validation**: 80/20 train-test split with cross-validation
-
-### **Performance Metrics**
-- **Accuracy**: 85-90% on test data
-- **Confidence Scoring**: Dynamic based on input quality
-- **Risk Detection**: 95% accuracy in identifying risk factors
-- **Processing Time**: <3 seconds for predictions
-
-### **Feature Weights**
-- Study Hours: 22%
-- Previous GPA: 22%
-- Attendance Rate: 18%
-- Assignment Completion: 12%
-- Study Group Participation: 5%
-- Motivation Level: 8%
-- Additional factors: 13%
+- `POST /index.php?action=upload_data` - Upload CSV data
+- `GET /index.php?action=get_activity` - Get recent activity
+- `GET /index.php?action=get_reports` - Get analytics data
+- `POST /index.php?action=update_full_name` - Update user profile
+- `POST /index.php?action=change_password` - Change password
 
 ## 📁 Project Structure
 
 ```
 AI_SAPP/
-├── 📄 index.php                 # Main PHP application and API
-├── 📄 dashboard.php             # Dashboard interface
-├── 📄 login.php                 # Login page
-├── 📄 register.php              # Registration page
-├── 📄 config.php                # Database configuration and User model
-├── 📄 check_session.php         # Session management
-├── 📄 logout.php                # Logout functionality
-├── 🐍 prediction_engine.py      # Python ML engine
-├── 📄 requirements.txt          # Python dependencies
-├── 📄 database.sql              # Database schema
-├── 📁 static/
-│   └── style.css               # Custom CSS styles
+├── 📄 index.php                    # Main application and API endpoints
+├── 📄 dashboard.php                # Dashboard interface
+├── 📄 login.php                    # Login page
+├── 📄 register.php                 # Registration page
+├── 📄 config.php                   # Database configuration
+├── 📄 check_session.php            # Session management
+├── 📄 logout.php                   # Logout functionality
+├── 🐍 prediction_engine.py         # Python ML engine (optional)
+├── 📄 requirements.txt             # Python dependencies
+├── 📄 database.sql                 # Database schema
+├── 📄 .htaccess                    # Apache configuration
 ├── 📁 data/
-│   └── sample_students.csv     # Sample data
-└── 📄 README.md                # Project documentation
+│   └── upload_template_students.csv # Sample CSV template
+└── 📄 README.md                    # Project documentation
 ```
 
 ## 🔒 Security Features
 
-- **Password Hashing**: Secure password storage with PHP's password_hash()
+- **Password Hashing**: Secure password storage using PHP's `password_hash()`
 - **SQL Injection Prevention**: Prepared statements and parameterized queries
-- **Session Management**: Secure session handling and validation
+- **Session Security**: Secure session handling and validation
 - **Input Validation**: Client-side and server-side validation
 - **XSS Protection**: Output escaping and sanitization
+- **CSRF Protection**: Form token validation
 
-## 🚀 Performance Optimizations
+## 📊 Performance Categories
 
-- **Python Process Management**: Efficient subprocess handling
-- **Database Indexing**: Optimized queries with proper indexes
-- **Caching**: Model caching and result optimization
-- **Progress Indicators**: Real-time user feedback
-- **Error Handling**: Comprehensive error management and logging
+The AI model predicts student performance into four categories:
 
-## 🔮 Future Enhancements
+- **Excellent** (4.2+ score): Outstanding academic performance
+- **Good** (3.5-4.2 score): Above-average performance
+- **Average** (2.5-3.5 score): Standard performance
+- **Poor** (<2.5 score): Below-average performance
 
-### **Planned Features**
-- **Real Student Data Integration**: Connect with actual educational databases
-- **Advanced Visualizations**: Interactive charts and graphs
-- **Multi-language Support**: Internationalization
-- **Mobile App**: Native mobile application
-- **API Documentation**: Comprehensive API reference
-- **Admin Panel**: Advanced administrative controls
+## 🚀 Key Features Implemented
 
-### **Machine Learning Improvements**
-- **Deep Learning Models**: Neural networks for complex patterns
-- **Time Series Analysis**: Historical performance tracking
-- **Ensemble Methods**: Multiple model combinations
-- **Feature Engineering**: Advanced feature selection
-- **A/B Testing**: Model performance comparison
+### ✅ Completed Features
+- [x] User authentication and registration
+- [x] AI prediction engine with progress indicators
+- [x] CSV data upload with flexible column mapping
+- [x] Real-time activity feed with pagination
+- [x] Comprehensive reports and analytics
+- [x] Interactive charts and visualizations
+- [x] Export functionality (PDF/CSV)
+- [x] User settings and password management
+- [x] Responsive design for all devices
+- [x] Sample data templates
+
+### 🔧 Configuration Options
+- **Python Engine**: Can be enabled/disabled in `config.php`
+- **Database**: MySQL/MariaDB with configurable connection
+- **Session Timeout**: Configurable session management
+- **File Upload**: CSV upload with size limits
+
+## 🐛 Troubleshooting
+
+### Common Issues
+1. **Prediction Engine Hanging**: Check Python dependencies and timeout settings
+2. **Database Connection**: Verify credentials in `config.php`
+3. **File Upload Issues**: Check file permissions and PHP upload limits
+4. **Session Problems**: Clear browser cookies and check session configuration
+
+### Error Logs
+- Check PHP error logs for backend issues
+- Monitor browser console for frontend errors
+- Review database logs for connection problems
 
 ## 🤝 Contributing
 
-1. **Fork the Repository**: Create your own fork
-2. **Create Feature Branch**: `git checkout -b feature/amazing-feature`
-3. **Make Changes**: Implement your improvements
-4. **Test Thoroughly**: Ensure all functionality works
-5. **Submit Pull Request**: Describe your changes clearly
-
-### **Development Guidelines**
-- Follow PSR-12 coding standards for PHP
-- Use meaningful variable and function names
-- Add comments for complex logic
-- Test all new features thoroughly
-- Update documentation as needed
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 📝 License
 
 This project is open source and available under the **MIT License**.
 
-## 📞 Support & Contact
+## 📞 Support
 
 - **Documentation**: Check this README and inline code comments
-- **Issues**: Report bugs and feature requests via GitHub Issues
-- **Email**: Contact the development team for support
-- **Community**: Join our developer community for discussions
+- **Issues**: Report bugs via GitHub Issues
+- **Email**: Contact the development team
 
 ## 🙏 Acknowledgments
 
-- **Bootstrap Team**: For the excellent responsive framework
-- **Font Awesome**: For the comprehensive icon library
-- **Python Community**: For the amazing machine learning libraries
-- **PHP Community**: For robust web development tools
+- **Bootstrap Team**: For the responsive framework
+- **Font Awesome**: For the icon library
+- **Chart.js**: For data visualization
+- **PHP & MySQL Communities**: For robust web development tools
 
 ---
 
-**AI_SAPP** - Transforming education through artificial intelligence! 🎓🤖
+**AI_SAPP** - Empowering education through artificial intelligence! 🎓🤖
