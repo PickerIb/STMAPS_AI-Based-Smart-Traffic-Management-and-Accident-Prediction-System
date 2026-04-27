@@ -581,9 +581,9 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-logo">
-                <img src="logo1.png" alt="AI SAPP Logo">
+                <img src="logo1.png" alt="AI STMAPS Logo">
             </div>
-            <div class="sidebar-title">AI SAPP</div>
+            <div class="sidebar-title">AI STMAPS</div>
         </div>
         
         <div class="sidebar-toggle" id="sidebarToggle">
@@ -634,7 +634,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
     <div class="main-content" id="mainContent">
         <!-- Top Bar -->
         <div class="top-bar">
-            <h1 class="page-title" id="pageTitle">AI Student Performance Predictor</h1>
+            <h1 class="page-title" id="pageTitle">AI-Based Smart Traffic Management and Accident Prediction System</h1>
             <div class="user-menu">
                 <div class="user-avatar">
                     <?php echo strtoupper(substr($user_name, 0, 1)); ?>
@@ -864,13 +864,13 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                 
                 // Update page title
                 const titles = {
-                    'dashboard': 'AI Student Performance Predictor',
+                    'dashboard': 'AI-Based Smart Traffic Management and Accident Prediction System',
                     'predictions': 'Performance Predictions',
                     'analytics': 'Analytics Dashboard',
                     'reports': 'Reports & Analytics',
                     'settings': 'System Settings'
                 };
-                $('#pageTitle').text(titles[section] || 'AI Student Performance Predictor');
+                $('#pageTitle').text(titles[section] || 'AI-Based Smart Traffic Management and Accident Prediction System');
                 
                 // Show/hide sections
                 $('.content-section').hide();
