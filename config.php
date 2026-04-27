@@ -1,12 +1,12 @@
 <?php
 // Database Configuration
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'student_performance_db');
+define('DB_NAME', 'smart_traffic_db');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 
 // Application Configuration
-define('APP_NAME', 'AI Student Performance Predictor');
+define('APP_NAME', 'AI-Based Smart Traffic Management and Accident Prediction System');
 define('APP_VERSION', '1.0.0');
 define('APP_URL', 'http://localhost/AI_SAPP');
 
@@ -35,8 +35,8 @@ define('SMTP_HOST', 'smtp.gmail.com');
 define('SMTP_PORT', 587);
 define('SMTP_USERNAME', '');
 define('SMTP_PASSWORD', '');
-define('FROM_EMAIL', 'noreply@studentpredictor.com');
-define('FROM_NAME', 'AI Student Predictor');
+define('FROM_EMAIL', 'noreply@smarttraffic.local');
+define('FROM_NAME', 'Smart Traffic AI');
 
 // Error Reporting
 error_reporting(E_ALL);
@@ -292,17 +292,19 @@ class User {
     }
 }
 
-class Student {
+class RoadSegment {
     private $conn;
-    private $table_name = "students";
+    private $table_name = "road_segments";
     
     public $id;
-    public $first_name;
-    public $last_name;
-    public $dob;
-    public $gender;
-    public $socio_econ_index;
-    public $class;
+    public $name;
+    public $zone;
+    public $start_lat;
+    public $start_lng;
+    public $end_lat;
+    public $end_lng;
+    public $speed_limit_kmh;
+    public $lanes;
     public $created_at;
     public $updated_at;
     
@@ -312,17 +314,19 @@ class Student {
     
     public function create() {
         $query = "INSERT INTO " . $this->table_name . " 
-                  (first_name, last_name, dob, gender, socio_econ_index, class) 
-                  VALUES (:first_name, :last_name, :dob, :gender, :socio_econ_index, :class)";
+                  (name, zone, start_lat, start_lng, end_lat, end_lng, speed_limit_kmh, lanes) 
+                  VALUES (:name, :zone, :start_lat, :start_lng, :end_lat, :end_lng, :speed_limit_kmh, :lanes)";
         
         $stmt = $this->conn->prepare($query);
         
-        $stmt->bindParam(':first_name', $this->first_name);
-        $stmt->bindParam(':last_name', $this->last_name);
-        $stmt->bindParam(':dob', $this->dob);
-        $stmt->bindParam(':gender', $this->gender);
-        $stmt->bindParam(':socio_econ_index', $this->socio_econ_index);
-        $stmt->bindParam(':class', $this->class);
+        $stmt->bindParam(':name', $this->name);
+        $stmt->bindParam(':zone', $this->zone);
+        $stmt->bindParam(':start_lat', $this->start_lat);
+        $stmt->bindParam(':start_lng', $this->start_lng);
+        $stmt->bindParam(':end_lat', $this->end_lat);
+        $stmt->bindParam(':end_lng', $this->end_lng);
+        $stmt->bindParam(':speed_limit_kmh', $this->speed_limit_kmh);
+        $stmt->bindParam(':lanes', $this->lanes);
         
         if($stmt->execute()) {
             return true;
@@ -346,12 +350,14 @@ class Student {
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if($row) {
-            $this->first_name = $row['first_name'];
-            $this->last_name = $row['last_name'];
-            $this->dob = $row['dob'];
-            $this->gender = $row['gender'];
-            $this->socio_econ_index = $row['socio_econ_index'];
-            $this->class = $row['class'];
+            $this->name = $row['name'];
+            $this->zone = $row['zone'];
+            $this->start_lat = $row['start_lat'];
+            $this->start_lng = $row['start_lng'];
+            $this->end_lat = $row['end_lat'];
+            $this->end_lng = $row['end_lng'];
+            $this->speed_limit_kmh = $row['speed_limit_kmh'];
+            $this->lanes = $row['lanes'];
             $this->created_at = $row['created_at'];
             $this->updated_at = $row['updated_at'];
             return true;
@@ -361,18 +367,20 @@ class Student {
     
     public function update() {
         $query = "UPDATE " . $this->table_name . " 
-                  SET first_name = :first_name, last_name = :last_name, dob = :dob, 
-                      gender = :gender, socio_econ_index = :socio_econ_index, class = :class 
+                  SET name = :name, zone = :zone, start_lat = :start_lat, start_lng = :start_lng,
+                      end_lat = :end_lat, end_lng = :end_lng, speed_limit_kmh = :speed_limit_kmh, lanes = :lanes
                   WHERE id = :id";
         
         $stmt = $this->conn->prepare($query);
         
-        $stmt->bindParam(':first_name', $this->first_name);
-        $stmt->bindParam(':last_name', $this->last_name);
-        $stmt->bindParam(':dob', $this->dob);
-        $stmt->bindParam(':gender', $this->gender);
-        $stmt->bindParam(':socio_econ_index', $this->socio_econ_index);
-        $stmt->bindParam(':class', $this->class);
+        $stmt->bindParam(':name', $this->name);
+        $stmt->bindParam(':zone', $this->zone);
+        $stmt->bindParam(':start_lat', $this->start_lat);
+        $stmt->bindParam(':start_lng', $this->start_lng);
+        $stmt->bindParam(':end_lat', $this->end_lat);
+        $stmt->bindParam(':end_lng', $this->end_lng);
+        $stmt->bindParam(':speed_limit_kmh', $this->speed_limit_kmh);
+        $stmt->bindParam(':lanes', $this->lanes);
         $stmt->bindParam(':id', $this->id);
         
         if($stmt->execute()) {

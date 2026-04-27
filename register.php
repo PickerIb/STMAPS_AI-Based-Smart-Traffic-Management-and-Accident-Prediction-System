@@ -10,7 +10,7 @@ requireGuest();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - AI Student Performance Predictor</title>
+    <title>Register - Smart Traffic Management AI</title>
     <link rel="icon" type="image/png" href="logo1.png">
     
     <!-- Bootstrap CSS -->
@@ -729,7 +729,7 @@ requireGuest();
                         Account Created Successfully!
                     </h4>
                     <p class="text-muted mb-4" style="color: #333333;">
-                        Welcome to AI Student Performance Predictor!<br>
+                        Welcome to Smart Traffic Management AI!<br>
                         Your account has been created and you can now access all features.
                     </p>
                     <div class="countdown-container mb-4">

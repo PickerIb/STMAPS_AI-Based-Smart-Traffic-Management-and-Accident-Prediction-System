@@ -1,279 +1,181 @@
--- AI Student Performance Predictor Database Schema
--- Created for MySQL/MariaDB  
+-- AI-Based Smart Traffic Management and Accident Prediction System
+-- Database schema (MySQL/MariaDB)
 
-CREATE DATABASE IF NOT EXISTS student_performance_db;
-USE student_performance_db;
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+SET time_zone = "+00:00";
 
--- Students table
-CREATE TABLE IF NOT EXISTS students (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100) NOT NULL,
-    dob DATE NOT NULL,
-    gender ENUM('Male', 'Female', 'Other') NOT NULL,
-    socio_econ_index DECIMAL(3,2) DEFAULT 0.50,
-    class VARCHAR(50) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_name (first_name, last_name),
-    INDEX idx_class (class),
-    INDEX idx_created (created_at)
-);
+-- Create database
+CREATE DATABASE IF NOT EXISTS `smart_traffic_db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `smart_traffic_db`;
 
--- Assessments table
-CREATE TABLE IF NOT EXISTS assessments (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    student_id INT NOT NULL,
-    term VARCHAR(20) NOT NULL,
-    assignment_avg DECIMAL(5,2) DEFAULT 0.00,
-    quiz_avg DECIMAL(5,2) DEFAULT 0.00,
-    exam_prev DECIMAL(5,2) DEFAULT 0.00,
-    attendance_rate DECIMAL(5,2) DEFAULT 0.00,
-    participation_score DECIMAL(5,2) DEFAULT 0.00,
-    on_time_submissions DECIMAL(5,2) DEFAULT 0.00,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    INDEX idx_student (student_id),
-    INDEX idx_term (term),
-    INDEX idx_created (created_at)
-);
+-- ----------------------------
+-- Users (authentication)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `users` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `username` VARCHAR(100) NOT NULL,
+  `email` VARCHAR(190) NOT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `role` ENUM('admin','authority','viewer') NOT NULL DEFAULT 'authority',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `last_login` DATETIME NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_users_username` (`username`),
+  UNIQUE KEY `uq_users_email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Labels table (target outcomes)
-CREATE TABLE IF NOT EXISTS labels (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    student_id INT NOT NULL,
-    term VARCHAR(20) NOT NULL,
-    target_grade DECIMAL(5,2) DEFAULT 0.00,
-    target_label ENUM('Poor', 'Average', 'Good', 'Excellent') DEFAULT 'Average',
-    actual_grade DECIMAL(5,2) DEFAULT NULL,
-    actual_label ENUM('Poor', 'Average', 'Good', 'Excellent') DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    INDEX idx_student (student_id),
-    INDEX idx_term (term),
-    INDEX idx_target_label (target_label),
-    INDEX idx_actual_label (actual_label)
-);
+-- ----------------------------
+-- Road segments / zones
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `road_segments` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(190) NOT NULL,
+  `zone` VARCHAR(120) NOT NULL,
+  `start_lat` DECIMAL(10,7) NULL,
+  `start_lng` DECIMAL(10,7) NULL,
+  `end_lat` DECIMAL(10,7) NULL,
+  `end_lng` DECIMAL(10,7) NULL,
+  `speed_limit_kmh` SMALLINT UNSIGNED NOT NULL DEFAULT 50,
+  `lanes` TINYINT UNSIGNED NOT NULL DEFAULT 2,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_road_segments_zone` (`zone`),
+  KEY `idx_road_segments_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Models table (ML model information)
-CREATE TABLE IF NOT EXISTS models (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    algorithm VARCHAR(50) NOT NULL,
-    params_json JSON,
-    metrics_json JSON,
-    artifact_path VARCHAR(255),
-    is_production BOOLEAN DEFAULT FALSE,
-    version VARCHAR(20) DEFAULT '1.0.0',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_name (name),
-    INDEX idx_algorithm (algorithm),
-    INDEX idx_production (is_production),
-    INDEX idx_created (created_at)
-);
+-- ----------------------------
+-- Traffic readings (real-time + historical)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `traffic_readings` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `segment_id` INT UNSIGNED NOT NULL,
+  `reading_time` DATETIME NOT NULL,
+  `vehicle_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  `avg_speed_kmh` DECIMAL(6,2) NOT NULL DEFAULT 0,
+  `density_veh_per_km` DECIMAL(8,2) NOT NULL DEFAULT 0,
+  `occupancy_pct` DECIMAL(5,2) NULL,
+  `weather` ENUM('clear','rain','fog','storm','snow','unknown') NOT NULL DEFAULT 'unknown',
+  `visibility_m` INT UNSIGNED NULL,
+  `temperature_c` DECIMAL(5,2) NULL,
+  `source` VARCHAR(80) NULL, -- sensor/camera/api/manual
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_traffic_readings_segment_time` (`segment_id`, `reading_time`),
+  CONSTRAINT `fk_traffic_readings_segment` FOREIGN KEY (`segment_id`) REFERENCES `road_segments` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Predictions table (store prediction results)
-CREATE TABLE IF NOT EXISTS predictions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    student_id INT NOT NULL,
-    model_id INT NOT NULL,
-    input_data JSON NOT NULL,
-    predicted_label ENUM('Poor', 'Average', 'Good', 'Excellent') NOT NULL,
-    confidence_scores JSON NOT NULL,
-    performance_score DECIMAL(5,2) DEFAULT 0.00,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
-    INDEX idx_student (student_id),
-    INDEX idx_model (model_id),
-    INDEX idx_predicted_label (predicted_label),
-    INDEX idx_created (created_at)
-);
+-- ----------------------------
+-- Accidents (ground truth)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `accidents` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `segment_id` INT UNSIGNED NOT NULL,
+  `accident_time` DATETIME NOT NULL,
+  `severity` ENUM('minor','moderate','severe','fatal') NOT NULL DEFAULT 'minor',
+  `cause` VARCHAR(190) NULL,
+  `vehicles_involved` TINYINT UNSIGNED NULL,
+  `injuries` SMALLINT UNSIGNED NULL,
+  `fatalities` SMALLINT UNSIGNED NULL,
+  `notes` TEXT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_accidents_segment_time` (`segment_id`, `accident_time`),
+  CONSTRAINT `fk_accidents_segment` FOREIGN KEY (`segment_id`) REFERENCES `road_segments` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- User sessions table (for authentication)
-CREATE TABLE IF NOT EXISTS user_sessions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    session_token VARCHAR(255) NOT NULL UNIQUE,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_user (user_id),
-    INDEX idx_token (session_token),
-    INDEX idx_expires (expires_at)
-);
+-- ----------------------------
+-- AI models (metadata)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `ai_models` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(190) NOT NULL,
+  `task` ENUM('congestion','accident_risk') NOT NULL,
+  `algorithm` VARCHAR(100) NOT NULL,
+  `params_json` JSON NULL,
+  `metrics_json` JSON NULL,
+  `artifact_path` VARCHAR(255) NULL,
+  `is_production` TINYINT(1) NOT NULL DEFAULT 0,
+  `version` VARCHAR(40) NOT NULL DEFAULT '1.0.0',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_ai_models_task_prod` (`task`, `is_production`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Users table (for admin access)
-CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    email VARCHAR(100) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'teacher', 'viewer') DEFAULT 'viewer',
-    is_active BOOLEAN DEFAULT TRUE,
-    last_login TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_username (username),
-    INDEX idx_email (email),
-    INDEX idx_role (role),
-    INDEX idx_active (is_active)
-);
+-- ----------------------------
+-- Predictions (congestion + accident probability)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `ai_predictions` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `segment_id` INT UNSIGNED NOT NULL,
+  `model_id` INT UNSIGNED NULL,
+  `prediction_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `input_json` JSON NOT NULL,
+  `congestion_level` ENUM('low','moderate','high','severe') NOT NULL,
+  `accident_probability` DECIMAL(5,4) NOT NULL DEFAULT 0, -- 0.0000 - 1.0000
+  `confidence` DECIMAL(5,4) NOT NULL DEFAULT 0,
+  `explanations_json` JSON NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_ai_predictions_segment_time` (`segment_id`, `prediction_time`),
+  KEY `idx_ai_predictions_model` (`model_id`),
+  CONSTRAINT `fk_ai_predictions_segment` FOREIGN KEY (`segment_id`) REFERENCES `road_segments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ai_predictions_model` FOREIGN KEY (`model_id`) REFERENCES `ai_models` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Audit log table
-CREATE TABLE IF NOT EXISTS audit_log (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    action VARCHAR(100) NOT NULL,
-    table_name VARCHAR(50),
-    record_id INT,
-    old_values JSON,
-    new_values JSON,
-    ip_address VARCHAR(45),
-    user_agent TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_user (user_id),
-    INDEX idx_action (action),
-    INDEX idx_table (table_name),
-    INDEX idx_created (created_at)
-);
+-- ----------------------------
+-- Alerts (for authorities / future driver integration)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `alerts` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `segment_id` INT UNSIGNED NOT NULL,
+  `alert_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `type` ENUM('congestion','accident_risk','incident','system') NOT NULL,
+  `severity` ENUM('info','warning','critical') NOT NULL DEFAULT 'info',
+  `message` VARCHAR(255) NOT NULL,
+  `is_acknowledged` TINYINT(1) NOT NULL DEFAULT 0,
+  `acknowledged_by` INT UNSIGNED NULL,
+  `acknowledged_at` DATETIME NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_alerts_segment_time` (`segment_id`, `alert_time`),
+  KEY `idx_alerts_ack` (`is_acknowledged`),
+  CONSTRAINT `fk_alerts_segment` FOREIGN KEY (`segment_id`) REFERENCES `road_segments` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_alerts_ack_user` FOREIGN KEY (`acknowledged_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Insert sample data
-INSERT INTO students (first_name, last_name, dob, gender, socio_econ_index, class) VALUES
-('MUPAYA', 'Egide', '2005-03-15', 'Male', 0.75, 'Grade 10A'),
-('UWURUKUNDO', 'Alliance Jolie', '2005-07-22', 'Female', 0.65, 'Grade 10A'),
-('CYUZUZO', 'Leon', '2005-01-10', 'Male', 0.45, 'Grade 10B'),
-('IZUKONDI', 'Bienvenue', '2005-11-05', 'Female', 0.85, 'Grade 10A'),
-('ISIMBI', 'Grollia', '2005-09-18', 'Female', 0.55, 'Grade 10B');
+-- ----------------------------
+-- Audit log (activity feed)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `audit_log` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` INT UNSIGNED NULL,
+  `action` VARCHAR(80) NOT NULL,
+  `table_name` VARCHAR(80) NULL,
+  `record_id` BIGINT UNSIGNED NULL,
+  `new_values` JSON NULL,
+  `old_values` JSON NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_log_time` (`created_at`),
+  KEY `idx_audit_log_user` (`user_id`),
+  CONSTRAINT `fk_audit_log_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO assessments (student_id, term, assignment_avg, quiz_avg, exam_prev, attendance_rate, participation_score, on_time_submissions) VALUES
-(1, 'Term 1', 85.5, 78.0, 82.0, 95.0, 88.0, 92.0),
-(2, 'Term 1', 92.0, 89.5, 91.0, 98.0, 94.0, 96.0),
-(3, 'Term 1', 72.0, 68.5, 70.0, 85.0, 75.0, 78.0),
-(4, 'Term 1', 88.0, 85.0, 87.0, 96.0, 90.0, 94.0),
-(5, 'Term 1', 79.0, 76.5, 78.0, 90.0, 82.0, 85.0);
+-- ----------------------------
+-- Seed sample data (minimal)
+-- ----------------------------
+INSERT INTO `road_segments` (`name`, `zone`, `start_lat`, `start_lng`, `end_lat`, `end_lng`, `speed_limit_kmh`, `lanes`)
+VALUES
+  ('Central Ave - Northbound', 'CBD', -1.286389, 36.817223, -1.280000, 36.820000, 50, 3),
+  ('Ring Road - East', 'Industrial', -1.300000, 36.830000, -1.310000, 36.850000, 60, 2)
+ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
 
-INSERT INTO labels (student_id, term, target_grade, target_label, actual_grade, actual_label) VALUES
-(1, 'Term 1', 85.0, 'Good', 82.0, 'Good'),
-(2, 'Term 1', 90.0, 'Excellent', 91.0, 'Excellent'),
-(3, 'Term 1', 70.0, 'Average', 70.0, 'Average'),
-(4, 'Term 1', 88.0, 'Good', 87.0, 'Good'),
-(5, 'Term 1', 78.0, 'Average', 78.0, 'Average');
-
-INSERT INTO models (name, algorithm, params_json, metrics_json, is_production, version) VALUES
-('Student Performance v1.0', 'RandomForest', '{"n_estimators": 100, "max_depth": 10}', '{"accuracy": 0.87, "precision": 0.85, "recall": 0.83}', TRUE, '1.0.0'),
-('Student Performance v1.1', 'XGBoost', '{"n_estimators": 200, "max_depth": 8}', '{"accuracy": 0.89, "precision": 0.87, "recall": 0.86}', FALSE, '1.1.0');
-
--- Create views for easier querying
-CREATE VIEW student_performance_summary AS
-SELECT 
-    s.id,
-    s.first_name,
-    s.last_name,
-    s.class,
-    a.term,
-    a.assignment_avg,
-    a.quiz_avg,
-    a.exam_prev,
-    a.attendance_rate,
-    a.participation_score,
-    a.on_time_submissions,
-    l.target_label,
-    l.actual_label,
-    l.target_grade,
-    l.actual_grade
-FROM students s
-LEFT JOIN assessments a ON s.id = a.student_id
-LEFT JOIN labels l ON s.id = l.student_id AND a.term = l.term;
-
--- Create stored procedures
-DELIMITER //
-
-CREATE PROCEDURE GetStudentPredictions(IN student_id INT)
-BEGIN
-    SELECT 
-        p.id,
-        p.predicted_label,
-        p.confidence_scores,
-        p.performance_score,
-        p.created_at,
-        m.name as model_name,
-        m.algorithm
-    FROM predictions p
-    JOIN models m ON p.model_id = m.id
-    WHERE p.student_id = student_id
-    ORDER BY p.created_at DESC;
-END //
-
-CREATE PROCEDURE GetModelPerformance()
-BEGIN
-    SELECT 
-        m.name,
-        m.algorithm,
-        m.metrics_json,
-        m.is_production,
-        COUNT(p.id) as prediction_count,
-        AVG(JSON_EXTRACT(p.confidence_scores, '$.confidence')) as avg_confidence
-    FROM models m
-    LEFT JOIN predictions p ON m.id = p.model_id
-    GROUP BY m.id
-    ORDER BY m.created_at DESC;
-END //
-
-DELIMITER ;
-
--- Create triggers for audit logging
-DELIMITER //
-
-CREATE TRIGGER students_audit_insert
-AFTER INSERT ON students
-FOR EACH ROW
-BEGIN
-    INSERT INTO audit_log (action, table_name, record_id, new_values, created_at)
-    VALUES ('INSERT', 'students', NEW.id, JSON_OBJECT(
-        'first_name', NEW.first_name,
-        'last_name', NEW.last_name,
-        'dob', NEW.dob,
-        'gender', NEW.gender,
-        'socio_econ_index', NEW.socio_econ_index,
-        'class', NEW.class
-    ), NOW());
-END //
-
-CREATE TRIGGER students_audit_update
-AFTER UPDATE ON students
-FOR EACH ROW
-BEGIN
-    INSERT INTO audit_log (action, table_name, record_id, old_values, new_values, created_at)
-    VALUES ('UPDATE', 'students', NEW.id, JSON_OBJECT(
-        'first_name', OLD.first_name,
-        'last_name', OLD.last_name,
-        'dob', OLD.dob,
-        'gender', OLD.gender,
-        'socio_econ_index', OLD.socio_econ_index,
-        'class', OLD.class
-    ), JSON_OBJECT(
-        'first_name', NEW.first_name,
-        'last_name', NEW.last_name,
-        'dob', NEW.dob,
-        'gender', NEW.gender,
-        'socio_econ_index', NEW.socio_econ_index,
-        'class', NEW.class
-    ), NOW());
-END //
-
-DELIMITER ;
-
--- Create indexes for better performance
-CREATE INDEX idx_students_class_gender ON students(class, gender);
-CREATE INDEX idx_assessments_student_term ON assessments(student_id, term);
-CREATE INDEX idx_predictions_model_created ON predictions(model_id, created_at);
-CREATE INDEX idx_labels_student_term ON labels(student_id, term);
-
--- Grant permissions (adjust as needed for your environment)
--- GRANT ALL PRIVILEGES ON student_performance_db.* TO 'your_user'@'localhost';
--- FLUSH PRIVILEGES;
-
+INSERT INTO `ai_models` (`name`, `task`, `algorithm`, `metrics_json`, `is_production`, `version`)
+VALUES
+  ('Baseline Congestion Model', 'congestion', 'HeuristicScoring', JSON_OBJECT('note','rule-based baseline'), 1, '1.0.0'),
+  ('Baseline Accident Risk Model', 'accident_risk', 'HeuristicScoring', JSON_OBJECT('note','rule-based baseline'), 1, '1.0.0');
 

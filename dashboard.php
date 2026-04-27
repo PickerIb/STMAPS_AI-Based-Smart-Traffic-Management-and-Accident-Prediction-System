@@ -5,8 +5,8 @@ session_start();
 // Require user to be logged in
 requireLogin();
 
-$user_name = $_SESSION['user_name'] ?? 'Student';
-$user_email = $_SESSION['user_email'] ?? 'student@example.com';
+$user_name = $_SESSION['user_name'] ?? 'Authority';
+$user_email = $_SESSION['user_email'] ?? 'authority@example.com';
 ?>
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Based Student Performance Predictor - Dashboard</title>
+    <title>AI-Based Smart Traffic Management - Dashboard</title>
     <link rel="icon" type="image/png" href="logo1.png">
     
     <!-- Bootstrap CSS -->
@@ -897,7 +897,7 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                             <div class="row">
                                 <div class="col-md-12">
                                     <div class="d-flex justify-content-between align-items-center mb-4">
-                                        <h5><i class="fas fa-brain me-2"></i>AI Performance Predictions</h5>
+                                        <h5><i class="fas fa-brain me-2"></i>AI Traffic Predictions</h5>
                                         <button class="btn btn-primary" id="newPredictionBtn">
                                             <i class="fas fa-plus me-2"></i>New Prediction
                                         </button>
@@ -910,134 +910,61 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                                 <div class="col-md-12">
                                     <div class="card">
                                         <div class="card-header">
-                                            <h6 class="mb-0"><i class="fas fa-calculator me-2"></i>Student Performance Prediction</h6>
+                                            <h6 class="mb-0"><i class="fas fa-calculator me-2"></i>Congestion & Accident Risk Prediction</h6>
                                         </div>
                                         <div class="card-body">
                                             <form id="predictionForm">
                                                 <div class="row">
                                                     <div class="col-md-6">
                                                         <div class="mb-3">
-                                                            <label for="studentName" class="form-label">Student Name <span class="text-danger">*</span></label>
-                                                            <input type="text" class="form-control" id="studentName" name="student_name" required 
-                                                                   placeholder="Enter student's full name">
-                                                            <div class="invalid-feedback">Please enter the student's name</div>
+                                                            <label for="segmentId" class="form-label">Road Segment ID <span class="text-danger">*</span></label>
+                                                            <input type="number" class="form-control" id="segmentId" name="segment_id" min="1" step="1" required
+                                                                   placeholder="e.g., 1">
+                                                            <div class="form-text">Use the segment ID configured in the system</div>
                                                         </div>
                                                         <div class="mb-3">
-                                                            <label for="studyHours" class="form-label">Study Hours per Week</label>
-                                                            <input type="number" class="form-control" id="studyHours" name="study_hours" min="0" max="50" step="0.5" required>
-                                                            <div class="form-text">Average hours spent studying per week</div>
+                                                            <label for="readingTime" class="form-label">Reading Time <span class="text-danger">*</span></label>
+                                                            <input type="datetime-local" class="form-control" id="readingTime" name="reading_time" required>
+                                                            <div class="form-text">Timestamp for the traffic reading</div>
                                                         </div>
                                                         <div class="mb-3">
-                                                            <label for="attendanceRate" class="form-label">Attendance Rate (%)</label>
-                                                            <input type="number" class="form-control" id="attendanceRate" name="attendance_rate" min="0" max="100" step="1" required>
-                                                            <div class="form-text">Percentage of classes attended</div>
+                                                            <label for="vehicleCount" class="form-label">Vehicle Count <span class="text-danger">*</span></label>
+                                                            <input type="number" class="form-control" id="vehicleCount" name="vehicle_count" min="0" max="200000" step="1" required>
+                                                            <div class="form-text">Vehicles observed during the interval</div>
                                                         </div>
                                                         <div class="mb-3">
-                                                            <label for="previousGPA" class="form-label">Previous GPA (Grade Point Average)</label>
-                                                            <input type="number" class="form-control" id="previousGPA" name="previous_gpa" min="0" max="4" step="0.1" required>
-                                                            <div class="form-text">Previous semester GPA (0.0 - 4.0 scale)</div>
+                                                            <label for="avgSpeed" class="form-label">Average Speed (km/h) <span class="text-danger">*</span></label>
+                                                            <input type="number" class="form-control" id="avgSpeed" name="avg_speed_kmh" min="0" max="200" step="0.1" required>
+                                                            <div class="form-text">Estimated average speed on the segment</div>
                                                         </div>
                                                         <div class="mb-3">
-                                                            <label for="extracurricularHours" class="form-label">Extracurricular Hours</label>
-                                                            <input type="number" class="form-control" id="extracurricularHours" name="extracurricular_hours" min="0" max="20" step="0.5" required>
-                                                            <div class="form-text">Hours per week in extracurricular activities</div>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <div class="mb-3">
-                                                            <label for="familyIncome" class="form-label">Family Income (Annual)</label>
-                                                            <select class="form-select" id="familyIncome" name="family_income" required>
-                                                                <option value="">Select Income Range</option>
-                                                                <option value="25000">Under $25,000</option>
-                                                                <option value="50000">$25,000 - $50,000</option>
-                                                                <option value="75000">$50,000 - $75,000</option>
-                                                                <option value="100000">$75,000 - $100,000</option>
-                                                                <option value="150000">$100,000 - $150,000</option>
-                                                                <option value="200000">Over $150,000</option>
-                                                            </select>
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label for="parentEducation" class="form-label">Parent Education Level</label>
-                                                            <select class="form-select" id="parentEducation" name="parent_education" required>
-                                                                <option value="">Select Education Level</option>
-                                                                <option value="1">High School or Less</option>
-                                                                <option value="2">Some College</option>
-                                                                <option value="3">Bachelor's Degree</option>
-                                                                <option value="4">Master's Degree</option>
-                                                                <option value="5">Doctorate/Professional</option>
-                                                            </select>
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label for="sleepHours" class="form-label">Sleep Hours per Night</label>
-                                                            <input type="number" class="form-control" id="sleepHours" name="sleep_hours" min="4" max="12" step="0.5" required>
-                                                            <div class="form-text">Average hours of sleep per night</div>
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label for="socialMediaHours" class="form-label">Social Media Hours per Day</label>
-                                                            <input type="number" class="form-control" id="socialMediaHours" name="social_media_hours" min="0" max="12" step="0.5" required>
-                                                            <div class="form-text">Hours spent on social media daily</div>
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label for="studyGroupParticipation" class="form-label">Study Group Participation (%)</label>
-                                                            <input type="number" class="form-control" id="studyGroupParticipation" name="study_group_participation" min="0" max="100" step="1" required>
-                                                            <div class="form-text">Percentage of time studying in groups</div>
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label for="assignmentCompletionRate" class="form-label">Assignment Completion Rate (%)</label>
-                                                            <input type="number" class="form-control" id="assignmentCompletionRate" name="assignment_completion_rate" min="0" max="100" step="1" required>
-                                                            <div class="form-text">Percentage of assignments completed on time</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                
-                                                <!-- Additional Information Section -->
-                                                <div class="row mt-4">
-                                                    <div class="col-12">
-                                                        <h6 class="text-primary border-bottom pb-2 mb-3">
-                                                            <i class="fas fa-info-circle me-2"></i>Additional Information
-                                                        </h6>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <div class="mb-3">
-                                                            <label for="studentAge" class="form-label">Student Age</label>
-                                                            <input type="number" class="form-control" id="studentAge" name="student_age" min="13" max="25" step="1">
-                                                            <div class="form-text">Optional: Student's current age</div>
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label for="currentGrade" class="form-label">Current Grade Level</label>
-                                                            <select class="form-select" id="currentGrade" name="current_grade">
-                                                                <option value="">Select Grade Level</option>
-                                                                <option value="9">Grade 9</option>
-                                                                <option value="10">Grade 10</option>
-                                                                <option value="11">Grade 11</option>
-                                                                <option value="12">Grade 12</option>
-                                                                <option value="13">College Freshman</option>
-                                                                <option value="14">College Sophomore</option>
-                                                                <option value="15">College Junior</option>
-                                                                <option value="16">College Senior</option>
-                                                            </select>
+                                                            <label for="density" class="form-label">Density (veh/km) <span class="text-danger">*</span></label>
+                                                            <input type="number" class="form-control" id="density" name="density_veh_per_km" min="0" max="500" step="0.1" required>
+                                                            <div class="form-text">Estimated density per kilometer</div>
                                                         </div>
                                                     </div>
                                                     <div class="col-md-6">
                                                         <div class="mb-3">
-                                                            <label for="learningStyle" class="form-label">Preferred Learning Style</label>
-                                                            <select class="form-select" id="learningStyle" name="learning_style">
-                                                                <option value="">Select Learning Style</option>
-                                                                <option value="visual">Visual Learner</option>
-                                                                <option value="auditory">Auditory Learner</option>
-                                                                <option value="kinesthetic">Kinesthetic Learner</option>
-                                                                <option value="reading">Reading/Writing Learner</option>
-                                                                <option value="mixed">Mixed Learning Style</option>
+                                                            <label for="weather" class="form-label">Weather <span class="text-danger">*</span></label>
+                                                            <select class="form-select" id="weather" name="weather" required>
+                                                                <option value="">Select Weather</option>
+                                                                <option value="clear">Clear</option>
+                                                                <option value="rain">Rain</option>
+                                                                <option value="fog">Fog</option>
+                                                                <option value="storm">Storm</option>
+                                                                <option value="snow">Snow</option>
+                                                                <option value="unknown">Unknown</option>
                                                             </select>
                                                         </div>
                                                         <div class="mb-3">
-                                                            <label for="motivationLevel" class="form-label">Motivation Level (1-10)</label>
-                                                            <input type="range" class="form-range" id="motivationLevel" name="motivation_level" min="1" max="10" value="5">
-                                                            <div class="d-flex justify-content-between">
-                                                                <small>Low (1)</small>
-                                                                <small id="motivationValue">5</small>
-                                                                <small>High (10)</small>
-                                                            </div>
+                                                            <label for="visibility" class="form-label">Visibility (m)</label>
+                                                            <input type="number" class="form-control" id="visibility" name="visibility_m" min="0" max="50000" step="1"
+                                                                   placeholder="e.g., 1200">
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <label for="temperature" class="form-label">Temperature (°C)</label>
+                                                            <input type="number" class="form-control" id="temperature" name="temperature_c" min="-40" max="60" step="0.1"
+                                                                   placeholder="e.g., 23.5">
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1045,7 +972,7 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                                                     <div class="col-12">
                                                         <div class="d-flex gap-2">
                                                             <button type="submit" class="btn btn-primary">
-                                                                <i class="fas fa-brain me-2"></i>Generate AI Prediction
+                                                                <i class="fas fa-brain me-2"></i>Generate Prediction
                                                             </button>
                                                             <button type="button" class="btn btn-secondary" id="loadSampleData">
                                                                 <i class="fas fa-download me-2"></i>Load Sample Data
@@ -1670,20 +1597,8 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
                         }
                         
                         if (response.success) {
-                            // Add original form data to response for summary analysis
-                            response.original_data = {
-                                study_hours: parseFloat(formData.get('study_hours')),
-                                attendance_rate: parseFloat(formData.get('attendance_rate')),
-                                previous_gpa: parseFloat(formData.get('previous_gpa')),
-                                assignment_completion_rate: parseFloat(formData.get('assignment_completion_rate')),
-                                sleep_hours: parseFloat(formData.get('sleep_hours')),
-                                social_media_hours: parseFloat(formData.get('social_media_hours')),
-                                study_group_participation: parseFloat(formData.get('study_group_participation')),
-                                motivation_level: parseInt(formData.get('motivation_level')) || 5
-                            };
-                            
                             displayPredictionResults(response);
-                            addToPredictionHistory(response, formData.get('student_name'));
+                            addToPredictionHistory(response, formData.get('segment_id'));
                             $('#predictionResultsSection').slideDown();
                             $('html, body').animate({
                                 scrollTop: $('#predictionResultsSection').offset().top - 100
@@ -1977,6 +1892,101 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
         }
 
         function displayPredictionResults(response) {
+            // Smart Traffic format (new project)
+            if (response && (response.congestion_level !== undefined || response.accident_probability !== undefined)) {
+                const level = (response.congestion_level || 'moderate').toString();
+                const confidencePct = Math.round((response.confidence || 0) * 100);
+                const accidentPct = Math.round((response.accident_probability || 0) * 100);
+                const congestionIndex = (response.congestion_index !== undefined && response.congestion_index !== null) ? response.congestion_index : '—';
+                const explanations = response.explanations || [];
+                const recommendations = response.recommendations || [];
+                const timestamp = response.timestamp || new Date().toLocaleString();
+
+                const badgeMap = {
+                    low:    { cls: 'bg-success text-white', icon: 'fas fa-check-circle', color: '#28a745' },
+                    moderate:{ cls: 'bg-warning text-dark', icon: 'fas fa-circle-half-stroke', color: '#ffc107' },
+                    high:   { cls: 'bg-danger text-white', icon: 'fas fa-triangle-exclamation', color: '#dc3545' },
+                    severe: { cls: 'bg-dark text-white', icon: 'fas fa-skull-crossbones', color: '#212529' },
+                };
+                const b = badgeMap[level] || badgeMap.moderate;
+
+                const resultsHtml = `
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="prediction-main-result mb-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="prediction-badge ${b.cls} me-3">
+                                        <i class="${b.icon} me-2"></i>${level.toUpperCase()}
+                                    </div>
+                                    <div>
+                                        <h5 class="mb-1">Traffic Prediction</h5>
+                                        <p class="text-muted mb-0">Confidence: ${confidencePct}% | Generated: ${timestamp}</p>
+                                    </div>
+                                </div>
+                                <div class="progress mb-3" style="height: 18px;">
+                                    <div class="progress-bar" role="progressbar"
+                                         style="width: ${confidencePct}%; background-color: ${b.color};"
+                                         aria-valuenow="${confidencePct}" aria-valuemin="0" aria-valuemax="100">
+                                        ${confidencePct}%
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6 class="card-title">Accident Probability</h6>
+                                                <h3 class="text-danger">${accidentPct}%</h3>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6 class="card-title">Congestion Index</h6>
+                                                <h3 class="text-primary">${congestionIndex}</h3>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            ${explanations.length ? `
+                            <div class="mb-4">
+                                <h6><i class="fas fa-circle-info text-info me-2"></i>Key Explanations</h6>
+                                <ul class="list-group">
+                                    ${explanations.map(x => `<li class="list-group-item"><i class="fas fa-chevron-right me-2 text-muted"></i>${x}</li>`).join('')}
+                                </ul>
+                            </div>` : ''}
+
+                            ${recommendations.length ? `
+                            <div class="recommendations">
+                                <h6><i class="fas fa-lightbulb text-warning me-2"></i>Recommended Actions</h6>
+                                <div class="list-group">
+                                    ${recommendations.map(rec => `
+                                        <div class="list-group-item">
+                                            <i class="fas fa-arrow-right text-primary me-2"></i>${rec}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>` : ''}
+                        </div>
+                        <div class="col-md-4">
+                            <div class="prediction-actions">
+                                <button class="btn btn-outline-primary btn-sm w-100 mb-2" onclick="window.print()">
+                                    <i class="fas fa-print me-2"></i>Print Results
+                                </button>
+                                <button class="btn btn-outline-secondary btn-sm w-100" onclick="exportPredictionResults()">
+                                    <i class="fas fa-download me-2"></i>Export Data
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                $('#predictionResults').html(resultsHtml);
+                return;
+            }
+
             const prediction = response.prediction;
             const confidence = Math.round(response.confidence * 100);
             const performanceScore = response.performance_score;
@@ -2255,6 +2265,50 @@ $user_email = $_SESSION['user_email'] ?? 'student@example.com';
         }
 
         function addToPredictionHistory(response, studentName) {
+            // Smart Traffic format (new project)
+            if (response && (response.congestion_level !== undefined || response.accident_probability !== undefined)) {
+                const segmentId = studentName; // caller now passes segment_id
+                const level = (response.congestion_level || 'moderate').toString();
+                const confidence = Math.round((response.confidence || 0) * 100);
+                const accidentPct = Math.round((response.accident_probability || 0) * 100);
+                const timestamp = new Date().toLocaleString();
+
+                const badgeMap = {
+                    low: 'badge bg-success',
+                    moderate: 'badge bg-warning text-dark',
+                    high: 'badge bg-danger',
+                    severe: 'badge bg-dark'
+                };
+                const badgeClass = badgeMap[level] || badgeMap.moderate;
+                const iconClass = (level === 'low') ? 'fas fa-check-circle'
+                    : (level === 'moderate') ? 'fas fa-circle-half-stroke'
+                    : (level === 'high') ? 'fas fa-triangle-exclamation'
+                    : 'fas fa-skull-crossbones';
+
+                const historyItem = `
+                    <div class="prediction-history-item border-bottom py-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3">
+                                    <i class="${iconClass} fa-2x text-muted"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1">Segment #${segmentId || '—'}</h6>
+                                    <small class="text-muted">${timestamp} • Accident risk: ${accidentPct}%</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <span class="${badgeClass}">${level.toUpperCase()}</span><br>
+                                <small class="text-muted">${confidence}% confidence</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                $('#predictionHistory').prepend(historyItem);
+                return;
+            }
+
             const prediction = response.prediction;
             const confidence = Math.round(response.confidence * 100);
             const timestamp = new Date().toLocaleString();

@@ -1,15 +1,15 @@
-# AI Student Academic Performance Predictor (AI_SAPP)
+# AI-Based Smart Traffic Management and Accident Prediction System
 
-A comprehensive web application that uses artificial intelligence to predict student academic performance. The system analyzes multiple factors including academic history, personal habits, and family background to provide accurate predictions and actionable recommendations.
+A web application that uses AI (baseline rule-based + optional Python engine) to optimize traffic flow and predict accident risk. The system analyzes traffic readings (vehicle count, speed, density) and environmental factors to produce congestion and accident-risk insights.
 
 ## 🌟 Features
 
 ### 🎯 AI Prediction Engine
-- **Dual Engine Architecture**: PHP backend with optional Python ML engine
+- **Dual Engine Architecture**: PHP fallback engine with optional Python engine
 - **Real-time Predictions**: Fast processing with progress indicators
-- **Performance Categories**: Excellent, Good, Average, Poor with confidence scores
-- **Personalized Recommendations**: AI-generated actionable advice for students
-- **Risk Factor Analysis**: Identifies potential academic challenges
+- **Congestion Prediction**: low / moderate / high / severe
+- **Accident Probability**: 0.0 - 1.0 with confidence score
+- **Actionable Recommendations**: Alerts + suggested mitigation steps
 
 ### 📊 Analytics & Reporting
 - **Interactive Dashboard**: Real-time analytics and visualizations
@@ -20,10 +20,10 @@ A comprehensive web application that uses artificial intelligence to predict stu
 - **Export Functionality**: Download reports as PDF or CSV
 
 ### 📈 Data Management
-- **CSV Data Upload**: Bulk import student data with flexible column mapping
-- **Sample Data Templates**: Pre-configured CSV templates for easy testing
-- **Student Database**: Comprehensive student information management
-- **Audit Logging**: Complete activity tracking and logging
+- **CSV Data Upload**: Bulk import traffic readings with flexible column mapping
+- **Sample Data Templates**: CSV template included in `data/upload_template_students.csv` (traffic readings)
+- **Road Segments / Readings / Accidents**: Traffic-focused database schema
+- **Audit Logging**: Activity tracking and logging
 
 ### 🔐 User Management
 - **Secure Authentication**: Password-based login system
@@ -53,13 +53,7 @@ A comprehensive web application that uses artificial intelligence to predict stu
    ```
 
 3. **Configure database connection**
-   Update `config.php` with your database credentials:
-   ```php
-   $host = 'localhost';
-   $dbname = 'ai_sapp_db';
-   $username = 'your_username';
-   $password = 'your_password';
-   ```
+   Update `config.php` with your database credentials (default DB is `smart_traffic_db`).
 
 4. **Install Python dependencies** (optional)
    ```bash
@@ -72,21 +66,18 @@ A comprehensive web application that uses artificial intelligence to predict stu
 
 ## 📋 Input Features
 
-The AI system analyzes 15+ factors across multiple categories:
+The baseline predictor uses core traffic + environment features:
 
-### Academic Factors
-- Study Hours per Week (0-50 hours)
-- Attendance Rate (0-100%)
-- Previous GPA (0.0-4.0 scale)
-- Assignment Completion Rate (0-100%)
-- Study Group Participation (0-100%)
+### Traffic Factors
+- Vehicle count (per interval)
+- Average speed (km/h)
+- Density (veh/km)
+- Reading time
 
-### Personal & Lifestyle
-- Sleep Hours per Night (4-12 hours)
-- Social Media Hours per Day (0-10 hours)
-- Extracurricular Hours per Week (0-20 hours)
-- Student Age (13-25 years)
-- Current Grade Level (9-16)
+### Environmental Factors
+- Weather (clear/rain/fog/storm/snow)
+- Visibility (m) (optional)
+- Temperature (°C) (optional)
 
 ### Family & Background
 - Family Income ($20,000-$200,000)
@@ -134,20 +125,18 @@ The AI system analyzes 15+ factors across multiple categories:
 - **Chart.js**: Data visualization
 - **Font Awesome**: Icons and UI elements
 
-### API Endpoints
+### API Endpoints (Index actions)
 - `POST /index.php?action=login` - User authentication
 - `POST /index.php?action=register` - User registration
-- `POST /index.php?action=predict` - Generate AI predictions
-- `POST /index.php?action=upload_data` - Upload CSV data
-- `GET /index.php?action=get_activity` - Get recent activity
-- `GET /index.php?action=get_reports` - Get analytics data
-- `POST /index.php?action=update_full_name` - Update user profile
-- `POST /index.php?action=change_password` - Change password
+- `POST /index.php?action=predict` - Congestion + accident risk prediction
+- `POST /index.php?action=upload_data` - Upload traffic readings CSV
+- `POST /index.php?action=get_activity` - Get recent activity
+- `POST /index.php?action=get_reports` - Get analytics data
 
 ## 📁 Project Structure
 
 ```
-AI_SAPP/
+STMAPS/
 ├── 📄 index.php                    # Main application and API endpoints
 ├── 📄 dashboard.php                # Dashboard interface
 ├── 📄 login.php                    # Login page
@@ -155,12 +144,12 @@ AI_SAPP/
 ├── 📄 config.php                   # Database configuration
 ├── 📄 check_session.php            # Session management
 ├── 📄 logout.php                   # Logout functionality
-├── 🐍 prediction_engine.py         # Python ML engine (optional)
+├── 🐍 prediction_engine.py         # Python traffic engine (optional)
 ├── 📄 requirements.txt             # Python dependencies
 ├── 📄 database.sql                 # Database schema
 ├── 📄 .htaccess                    # Apache configuration
 ├── 📁 data/
-│   └── upload_template_students.csv # Sample CSV template
+│   └── upload_template_students.csv # Sample CSV template (traffic readings)
 └── 📄 README.md                    # Project documentation
 ```
 

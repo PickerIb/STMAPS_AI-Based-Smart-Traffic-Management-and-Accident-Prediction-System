@@ -112,255 +112,102 @@ function callPythonPredictionEngine($data) {
     }
 }
 
-// Helper functions for prediction algorithm
-function calculatePerformanceScore($data) {
-    // Normalize and weight different factors
-    $study_hours_score = min($data['study_hours'] / 10, 1) * 0.22; // Max 10 hours = 1.0
-    $attendance_score = $data['attendance_rate'] / 100 * 0.18;
-    $gpa_score = $data['previous_gpa'] / 4 * 0.22;
-    $assignment_score = $data['assignment_completion_rate'] / 100 * 0.12;
-    $study_group_score = $data['study_group_participation'] / 100 * 0.05;
-    
-    // Additional factors
-    $motivation_score = 0;
-    if (isset($data['motivation_level'])) {
-        $motivation_score = $data['motivation_level'] / 10 * 0.08; // Motivation level 1-10
-    }
-    
-    $age_factor = 0;
-    if (isset($data['student_age'])) {
-        // Optimal age range for academic performance (16-20)
-        $age = $data['student_age'];
-        if ($age >= 16 && $age <= 20) {
-            $age_factor = 0.03;
-        } elseif ($age >= 14 && $age <= 22) {
-            $age_factor = 0.02;
-        } else {
-            $age_factor = 0.01;
-        }
-    }
-    
-    // Learning style bonus
-    $learning_style_bonus = 0;
-    if (isset($data['learning_style'])) {
-        switch($data['learning_style']) {
-            case 'visual':
-            case 'reading':
-                $learning_style_bonus = 0.02;
-                break;
-            case 'mixed':
-                $learning_style_bonus = 0.03;
-                break;
-            case 'auditory':
-            case 'kinesthetic':
-                $learning_style_bonus = 0.01;
-                break;
-        }
-    }
-    
-    // Negative factors
-    $social_media_penalty = max(0, ($data['social_media_hours'] - 2) / 8) * 0.04; // Penalty for >2 hours
-    $sleep_penalty = 0;
-    if ($data['sleep_hours'] < 6) {
-        $sleep_penalty = (6 - $data['sleep_hours']) / 6 * 0.04; // Penalty for <6 hours
-    }
-    
-    // Socioeconomic factors
-    $income_factor = min($data['family_income'] / 100000, 1) * 0.02; // Income up to 100k
-    $education_factor = $data['parent_education'] / 5 * 0.01; // Parent education level
-    
-    $base_score = $study_hours_score + $attendance_score + $gpa_score + $assignment_score + 
-                  $study_group_score + $motivation_score + $age_factor + $learning_style_bonus +
-                  $income_factor + $education_factor;
-    
-    $final_score = max(0, $base_score - $social_media_penalty - $sleep_penalty);
-    
-    return min(5.0, $final_score * 5); // Scale to 0-5
+// Helper functions for traffic prediction (PHP fallback engine)
+function clamp01($x) {
+    if ($x < 0) return 0.0;
+    if ($x > 1) return 1.0;
+    return (float)$x;
 }
 
-function determinePerformanceCategory($score, $data) {
-    // Dynamic thresholds based on data patterns
-    $thresholds = [
-        'excellent' => 4.2,
-        'good' => 3.2,
-        'average' => 2.2
-    ];
-    
-    // Adjust thresholds based on study hours and attendance
-    if ($data['study_hours'] > 8) {
-        $thresholds['excellent'] += 0.2;
+function computeCongestionIndex($data) {
+    $density = max(0.0, (float)($data['density_veh_per_km'] ?? 0));
+    $speed = max(0.0, (float)($data['avg_speed_kmh'] ?? 0));
+    $count = max(0.0, (float)($data['vehicle_count'] ?? 0));
+
+    $density_n = clamp01($density / 120.0);
+    $count_n   = clamp01($count / 2000.0);
+    $speed_n   = clamp01($speed / 80.0);
+
+    $congestion = (0.55 * $density_n) + (0.25 * $count_n) + (0.20 * (1.0 - $speed_n));
+    return clamp01($congestion);
+}
+
+function determineCongestionLevel($congestionIndex) {
+    if ($congestionIndex >= 0.80) return 'severe';
+    if ($congestionIndex >= 0.60) return 'high';
+    if ($congestionIndex >= 0.35) return 'moderate';
+    return 'low';
+}
+
+function computeAccidentProbability($data, $congestionIndex) {
+    $weather = strtolower((string)($data['weather'] ?? 'unknown'));
+    $visibility = isset($data['visibility_m']) ? (float)$data['visibility_m'] : null;
+    $speed = max(0.0, (float)($data['avg_speed_kmh'] ?? 0));
+
+    $weather_risk = 0.10;
+    if ($weather === 'clear') $weather_risk = 0.05;
+    elseif ($weather === 'rain') $weather_risk = 0.18;
+    elseif ($weather === 'fog') $weather_risk = 0.22;
+    elseif ($weather === 'storm') $weather_risk = 0.30;
+    elseif ($weather === 'snow') $weather_risk = 0.28;
+
+    $visibility_risk = 0.0;
+    if ($visibility !== null) {
+        $visibility_risk = clamp01((2000.0 - $visibility) / 2000.0) * 0.25;
     }
-    if ($data['attendance_rate'] > 90) {
-        $thresholds['excellent'] += 0.1;
+
+    $stop_go_risk = 0.0;
+    if ($speed > 0 && $speed < 15) {
+        $stop_go_risk = 0.18;
     }
-    
-    $confidence_base = 0.75;
-    $confidence_variance = 0.15;
-    
-    if ($score >= $thresholds['excellent']) {
-        $confidence = $confidence_base + $confidence_variance;
-        return ['category' => 'Excellent', 'confidence' => min(0.95, $confidence)];
-    } elseif ($score >= $thresholds['good']) {
-        $confidence = $confidence_base + ($confidence_variance * 0.7);
-        return ['category' => 'Good', 'confidence' => min(0.90, $confidence)];
-    } elseif ($score >= $thresholds['average']) {
-        $confidence = $confidence_base + ($confidence_variance * 0.3);
-        return ['category' => 'Average', 'confidence' => min(0.85, $confidence)];
+
+    $base = 0.03;
+    $p = $base + (0.42 * $congestionIndex) + $weather_risk + $visibility_risk + $stop_go_risk;
+    return clamp01($p);
+}
+
+function buildTrafficExplanations($data, $congestionIndex, $accidentProbability) {
+    $explanations = [];
+    $level = determineCongestionLevel($congestionIndex);
+    $explanations[] = "Congestion index indicates '$level' traffic conditions.";
+
+    $weather = strtolower((string)($data['weather'] ?? 'unknown'));
+    if (in_array($weather, ['rain', 'fog', 'storm', 'snow'], true)) {
+        $explanations[] = "Weather condition ('$weather') increases accident risk.";
+    }
+    if (isset($data['visibility_m']) && (float)$data['visibility_m'] < 800) {
+        $explanations[] = "Low visibility increases accident probability.";
+    }
+    if (isset($data['avg_speed_kmh']) && (float)$data['avg_speed_kmh'] < 15) {
+        $explanations[] = "Stop-and-go speeds raise collision likelihood.";
+    }
+    if ($accidentProbability >= 0.65) {
+        $explanations[] = "Overall risk is high; consider enforcing speed discipline and rerouting.";
+    }
+
+    return $explanations;
+}
+
+function buildTrafficRecommendations($congestionLevel, $accidentProbability) {
+    $recs = [];
+
+    if ($congestionLevel === 'severe' || $congestionLevel === 'high') {
+        $recs[] = 'Optimize signal timing / deploy manual traffic control to improve flow.';
+        $recs[] = 'Broadcast congestion alert and suggest alternative routes.';
+    } elseif ($congestionLevel === 'moderate') {
+        $recs[] = 'Monitor segment and adjust signals proactively if density increases.';
     } else {
-        $confidence = $confidence_base - ($confidence_variance * 0.2);
-        return ['category' => 'Poor', 'confidence' => max(0.60, $confidence)];
+        $recs[] = 'Traffic is stable; continue monitoring.';
     }
-}
 
-function generateProbabilityDistribution($prediction, $confidence, $data) {
-    $categories = ['Excellent', 'Good', 'Average', 'Poor'];
-    $probabilities = [];
-    
-    // Base probability for the predicted category
-    $probabilities[$prediction] = $confidence;
-    
-    // Distribute remaining probability among other categories
-    $remaining = 1 - $confidence;
-    $other_categories = array_diff($categories, [$prediction]);
-    
-    // Weight other categories based on how close they are to the prediction
-    $weights = [
-        'Excellent' => ['Good' => 0.4, 'Average' => 0.2, 'Poor' => 0.1],
-        'Good' => ['Excellent' => 0.3, 'Average' => 0.4, 'Poor' => 0.2],
-        'Average' => ['Good' => 0.3, 'Poor' => 0.4, 'Excellent' => 0.1],
-        'Poor' => ['Average' => 0.4, 'Good' => 0.2, 'Excellent' => 0.1]
-    ];
-    
-    foreach ($other_categories as $category) {
-        $weight = $weights[$prediction][$category] ?? 0.2;
-        $probabilities[$category] = $remaining * $weight;
+    if ($accidentProbability >= 0.65) {
+        $recs[] = 'Issue a high-risk warning; increase patrol presence and enforce speed limits.';
+        $recs[] = 'Consider temporary speed reduction and lane management.';
+    } elseif ($accidentProbability >= 0.40) {
+        $recs[] = 'Issue a caution alert and monitor for incidents.';
     }
-    
-    // Normalize to ensure they sum to 1
-    $total = array_sum($probabilities);
-    foreach ($probabilities as $category => $prob) {
-        $probabilities[$category] = $prob / $total;
-    }
-    
-    return $probabilities;
-}
 
-function analyzeRiskFactors($data) {
-    $risk_factors = [];
-    
-    if ($data['study_hours'] < 5) {
-        $risk_factors[] = 'Low study time';
-    }
-    if ($data['attendance_rate'] < 80) {
-        $risk_factors[] = 'Poor attendance';
-    }
-    if ($data['previous_gpa'] < 2.5) {
-        $risk_factors[] = 'Low previous GPA';
-    }
-    if ($data['social_media_hours'] > 4) {
-        $risk_factors[] = 'Excessive social media use';
-    }
-    if ($data['sleep_hours'] < 6) {
-        $risk_factors[] = 'Insufficient sleep';
-    }
-    if ($data['assignment_completion_rate'] < 70) {
-        $risk_factors[] = 'Poor assignment completion';
-    }
-    if ($data['study_group_participation'] < 30) {
-        $risk_factors[] = 'Limited group study participation';
-    }
-    
-    // Additional risk factors based on new data
-    if (isset($data['motivation_level']) && $data['motivation_level'] < 4) {
-        $risk_factors[] = 'Low motivation level';
-    }
-    if (isset($data['student_age'])) {
-        $age = $data['student_age'];
-        if ($age < 15 || $age > 22) {
-            $risk_factors[] = 'Age outside optimal academic range';
-        }
-    }
-    if (isset($data['learning_style']) && $data['learning_style'] === 'kinesthetic') {
-        $risk_factors[] = 'May need hands-on learning support';
-    }
-    if (isset($data['current_grade'])) {
-        $grade = $data['current_grade'];
-        if ($grade >= 13 && $data['study_hours'] < 8) {
-            $risk_factors[] = 'Insufficient study time for college level';
-        }
-    }
-    
-    return $risk_factors;
-}
-
-function generateRecommendations($prediction, $data, $risk_factors) {
-    $recommendations = [];
-    
-    // General recommendations based on prediction
-    switch ($prediction) {
-        case 'Excellent':
-            $recommendations[] = 'Maintain current study habits and continue excellent performance';
-            $recommendations[] = 'Consider mentoring other students or taking advanced courses';
-            break;
-        case 'Good':
-            $recommendations[] = 'Focus on areas with room for improvement to reach excellent performance';
-            $recommendations[] = 'Maintain consistent study schedule';
-            break;
-        case 'Average':
-            $recommendations[] = 'Increase study hours and improve attendance';
-            $recommendations[] = 'Seek help from teachers or tutors for challenging subjects';
-            break;
-        case 'Poor':
-            $recommendations[] = 'Develop a structured study plan with clear goals';
-            $recommendations[] = 'Consider academic support services and counseling';
-            break;
-    }
-    
-    // Specific recommendations based on risk factors
-    if (in_array('Low study time', $risk_factors)) {
-        $recommendations[] = 'Increase study hours to at least 5-7 hours per week';
-    }
-    if (in_array('Poor attendance', $risk_factors)) {
-        $recommendations[] = 'Improve attendance rate to above 85%';
-    }
-    if (in_array('Excessive social media use', $risk_factors)) {
-        $recommendations[] = 'Limit social media use to less than 2 hours per day';
-    }
-    if (in_array('Insufficient sleep', $risk_factors)) {
-        $recommendations[] = 'Aim for 7-8 hours of sleep per night for optimal performance';
-    }
-    if (in_array('Limited group study participation', $risk_factors)) {
-        $recommendations[] = 'Join study groups to improve learning through collaboration';
-    }
-    
-    // Additional recommendations based on new data
-    if (isset($data['motivation_level']) && $data['motivation_level'] < 5) {
-        $recommendations[] = 'Work on building motivation through goal setting and rewards';
-    }
-    if (isset($data['learning_style'])) {
-        switch($data['learning_style']) {
-            case 'visual':
-                $recommendations[] = 'Use visual aids, charts, and diagrams in studying';
-                break;
-            case 'auditory':
-                $recommendations[] = 'Record lectures and use audio materials for studying';
-                break;
-            case 'kinesthetic':
-                $recommendations[] = 'Use hands-on activities and movement while studying';
-                break;
-            case 'reading':
-                $recommendations[] = 'Focus on written materials and note-taking strategies';
-                break;
-        }
-    }
-    if (isset($data['current_grade']) && $data['current_grade'] >= 13) {
-        $recommendations[] = 'Consider college-level study strategies and time management';
-    }
-    if (isset($data['student_age']) && $data['student_age'] < 16) {
-        $recommendations[] = 'Develop foundational study habits for future academic success';
-    }
-    
-    return array_unique($recommendations);
+    return array_values(array_unique($recs));
 }
 
 // Handle AJAX requests
@@ -443,7 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         
                         echo json_encode([
                             'success' => true,
-                            'message' => '🎉 Account created successfully! Welcome to AI Student Performance Predictor. You will be redirected to login in 5 seconds...',
+                            'message' => '🎉 Account created successfully! Welcome to STMAPS. You will be redirected to login in 5 seconds...',
                             'redirect' => 'login.php',
                             'user_data' => [
                                 'name' => $first_name . ' ' . $last_name,
@@ -571,9 +418,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             try {
                 // Validate input data
                 $required_fields = [
-                    'study_hours', 'attendance_rate', 'previous_gpa', 'extracurricular_hours',
-                    'family_income', 'parent_education', 'sleep_hours', 'social_media_hours',
-                    'study_group_participation', 'assignment_completion_rate'
+                    'segment_id', 'reading_time', 'vehicle_count', 'avg_speed_kmh', 'density_veh_per_km', 'weather'
                 ];
                 
                 $data = [];
@@ -583,23 +428,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     if (!array_key_exists($field, $_POST) || $_POST[$field] === '') {
                         $errors[] = "Field '$field' is required";
                     } else {
-                        $data[$field] = floatval($_POST[$field]);
+                        $data[$field] = $_POST[$field];
                     }
                 }
                 
                 // Additional validation
-                if (isset($data['study_hours']) && ($data['study_hours'] < 0 || $data['study_hours'] > 50)) {
-                    $errors[] = "Study hours must be between 0 and 50";
-                }
-                if (isset($data['attendance_rate']) && ($data['attendance_rate'] < 0 || $data['attendance_rate'] > 100)) {
-                    $errors[] = "Attendance rate must be between 0 and 100";
-                }
-                if (isset($data['previous_gpa']) && ($data['previous_gpa'] < 0 || $data['previous_gpa'] > 4)) {
-                    $errors[] = "Previous GPA must be between 0 and 4";
-                }
-                if (isset($data['sleep_hours']) && ($data['sleep_hours'] < 4 || $data['sleep_hours'] > 12)) {
-                    $errors[] = "Sleep hours must be between 4 and 12";
-                }
+                $data['segment_id'] = (int)$data['segment_id'];
+                $data['vehicle_count'] = (int)$data['vehicle_count'];
+                $data['avg_speed_kmh'] = (float)$data['avg_speed_kmh'];
+                $data['density_veh_per_km'] = (float)$data['density_veh_per_km'];
+                $data['weather'] = strtolower(trim((string)$data['weather']));
+                $data['visibility_m'] = isset($_POST['visibility_m']) && $_POST['visibility_m'] !== '' ? (int)$_POST['visibility_m'] : null;
+                $data['temperature_c'] = isset($_POST['temperature_c']) && $_POST['temperature_c'] !== '' ? (float)$_POST['temperature_c'] : null;
+
+                if ($data['segment_id'] <= 0) $errors[] = "segment_id must be a positive integer";
+                if ($data['vehicle_count'] < 0 || $data['vehicle_count'] > 200000) $errors[] = "vehicle_count must be between 0 and 200000";
+                if ($data['avg_speed_kmh'] < 0 || $data['avg_speed_kmh'] > 200) $errors[] = "avg_speed_kmh must be between 0 and 200";
+                if ($data['density_veh_per_km'] < 0 || $data['density_veh_per_km'] > 500) $errors[] = "density_veh_per_km must be between 0 and 500";
                 
                 if (!empty($errors)) {
                     echo json_encode([
@@ -610,12 +455,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     exit;
                 }
                 
-                // Add optional fields with defaults
-                $data['motivation_level'] = isset($_POST['motivation_level']) ? intval($_POST['motivation_level']) : 5;
-                $data['student_age'] = isset($_POST['student_age']) ? intval($_POST['student_age']) : 17;
-                $data['current_grade'] = isset($_POST['current_grade']) ? intval($_POST['current_grade']) : 11;
-                $data['learning_style'] = $_POST['learning_style'] ?? 'mixed';
-                
                 // Optionally use Python prediction engine; otherwise PHP-only
                 $result = ['success' => false, 'error' => 'python_disabled'];
                 if (defined('USE_PYTHON_ENGINE') && USE_PYTHON_ENGINE === true) {
@@ -625,10 +464,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($result['success']) {
                     // Log prediction for analytics
                     error_log('AI Prediction made: ' . json_encode([
-                        'student_name' => $_POST['student_name'] ?? 'Anonymous',
-                        'prediction' => $result['prediction'],
-                        'confidence' => $result['confidence'],
-                        'performance_score' => $result['performance_score'],
+                        'segment_id' => $data['segment_id'],
+                        'congestion_level' => $result['congestion_level'] ?? null,
+                        'accident_probability' => $result['accident_probability'] ?? null,
+                        'confidence' => $result['confidence'] ?? null,
                         'model_type' => $result['model_info']['type'] ?? 'Unknown'
                     ]));
                     // Write to audit log for Recent Activity
@@ -636,12 +475,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $database = new Database();
                         $db = $database->getConnection();
                         if ($db) {
-                            $db->prepare("INSERT INTO audit_log (user_id, action, table_name, new_values, created_at) VALUES (:user_id, 'prediction', 'predictions', :new_values, NOW())")
+                            $db->prepare("INSERT INTO audit_log (user_id, action, table_name, new_values, created_at) VALUES (:user_id, 'prediction', 'ai_predictions', :new_values, NOW())")
                                ->execute([
                                    ':user_id' => $_SESSION['user_id'] ?? null,
                                    ':new_values' => json_encode([
-                                       'student' => $_POST['student_name'] ?? null,
-                                       'prediction' => $result['prediction'] ?? null,
+                                       'segment_id' => $data['segment_id'],
+                                       'congestion_level' => $result['congestion_level'] ?? null,
+                                       'accident_probability' => $result['accident_probability'] ?? null,
                                        'confidence' => $result['confidence'] ?? null
                                    ])
                                ]);
@@ -653,21 +493,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     // Fallback to PHP prediction if Python fails
                     error_log('Python prediction failed, using PHP fallback: ' . $result['error']);
                     
-                    $performance_score = calculatePerformanceScore($data);
-                    $prediction_result = determinePerformanceCategory($performance_score, $data);
-                    $prediction = $prediction_result['category'];
-                    $confidence = $prediction_result['confidence'];
-                    $probabilities = generateProbabilityDistribution($prediction, $confidence, $data);
-                    $risk_factors = analyzeRiskFactors($data);
-                    $recommendations = generateRecommendations($prediction, $data, $risk_factors);
+                    $congestion_index = computeCongestionIndex($data);
+                    $congestion_level = determineCongestionLevel($congestion_index);
+                    $accident_probability = computeAccidentProbability($data, $congestion_index);
+                    $confidence = min(0.92, max(0.70, 0.78 + (0.06 * (1 - abs(0.5 - $congestion_index)))));
+                    $explanations = buildTrafficExplanations($data, $congestion_index, $accident_probability);
+                    $recommendations = buildTrafficRecommendations($congestion_level, $accident_probability);
                     
                     $responsePayload = [
                         'success' => true,
-                        'prediction' => $prediction,
+                        'congestion_level' => $congestion_level,
+                        'congestion_index' => round($congestion_index, 4),
+                        'accident_probability' => round($accident_probability, 4),
                         'confidence' => $confidence,
-                        'probabilities' => $probabilities,
-                        'performance_score' => round($performance_score, 2),
-                        'risk_factors' => $risk_factors,
+                        'explanations' => $explanations,
                         'recommendations' => $recommendations,
                         'timestamp' => date('Y-m-d H:i:s'),
                         'model_info' => [
@@ -680,12 +519,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $database = new Database();
                         $db = $database->getConnection();
                         if ($db) {
-                            $db->prepare("INSERT INTO audit_log (user_id, action, table_name, new_values, created_at) VALUES (:user_id, 'prediction', 'predictions', :new_values, NOW())")
+                            $db->prepare("INSERT INTO audit_log (user_id, action, table_name, new_values, created_at) VALUES (:user_id, 'prediction', 'ai_predictions', :new_values, NOW())")
                                ->execute([
                                    ':user_id' => $_SESSION['user_id'] ?? null,
                                    ':new_values' => json_encode([
-                                       'student' => $_POST['student_name'] ?? null,
-                                       'prediction' => $prediction,
+                                       'segment_id' => $data['segment_id'],
+                                       'congestion_level' => $congestion_level,
+                                       'accident_probability' => $accident_probability,
                                        'confidence' => $confidence
                                    ])
                                ]);
@@ -708,16 +548,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
         case 'load_sample':
             echo json_encode([
-                'study_hours' => 4.5,
-                'attendance_rate' => 85,
-                'previous_gpa' => 3.2,
-                'extracurricular_hours' => 3.0,
-                'family_income' => 50000,
-                'parent_education' => 3,
-                'sleep_hours' => 7.5,
-                'social_media_hours' => 2.0,
-                'study_group_participation' => 60,
-                'assignment_completion_rate' => 90
+                'segment_id' => 1,
+                'reading_time' => date('Y-m-d H:i:s'),
+                'vehicle_count' => 820,
+                'avg_speed_kmh' => 24.5,
+                'density_veh_per_km' => 68.0,
+                'weather' => 'rain',
+                'visibility_m' => 900,
+                'temperature_c' => 21.0
             ]);
             exit;
         
@@ -745,13 +583,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $normalize = function($s){ return preg_replace('/[\s_\-]/', '', strtolower($s)); };
                 $normalizedHeader = array_map($normalize, $header);
 
-                // Aliases for required fields
+                // Aliases for required fields (traffic readings)
                 $aliases = [
-                    'first_name' => ['first_name','firstname','first name','first-name','fname'],
-                    'last_name' => ['last_name','lastname','last name','last-name','lname','surname'],
-                    'dob' => ['dob','dateofbirth','date_of_birth','date of birth','birthdate','birth_date'],
-                    'gender' => ['gender','sex'],
-                    'class' => ['class','classname','class_name','classroom','grade','section']
+                    'segment_id' => ['segment_id','segmentid','roadsegmentid','road_segment_id','roadsegment','segment'],
+                    'reading_time' => ['reading_time','readingtime','timestamp','time','datetime','date_time'],
+                    'vehicle_count' => ['vehicle_count','vehiclecount','count','vehicles','vehiclecountinterval'],
+                    'avg_speed_kmh' => ['avg_speed_kmh','avgspeedkmh','avg_speed','speed','speed_kmh'],
+                    'density_veh_per_km' => ['density_veh_per_km','densityvehperkm','density','veh_per_km','vehicles_per_km'],
+                    'weather' => ['weather','condition','weather_condition']
                 ];
 
                 $indexMap = [];
@@ -774,23 +613,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $db = $database->getConnection();
                 if ($db === null) { throw new Exception('DB connection failed'); }
 
-                $insert = $db->prepare("INSERT INTO students (first_name,last_name,dob,gender,class) VALUES (:first_name,:last_name,:dob,:gender,:class)");
+                $insert = $db->prepare("INSERT INTO traffic_readings (segment_id, reading_time, vehicle_count, avg_speed_kmh, density_veh_per_km, weather, visibility_m, temperature_c, source)
+                                        VALUES (:segment_id, :reading_time, :vehicle_count, :avg_speed_kmh, :density_veh_per_km, :weather, :visibility_m, :temperature_c, :source)");
                 $count = 0;
                 while (($row = fgetcsv($handle)) !== false) {
                     if (count($row) === 1 && trim($row[0]) === '') { continue; }
-                    $first = trim((string)($row[$indexMap['first_name']] ?? ''));
-                    $last = trim((string)($row[$indexMap['last_name']] ?? ''));
-                    $dob = trim((string)($row[$indexMap['dob']] ?? ''));
-                    $gender = trim((string)($row[$indexMap['gender']] ?? ''));
-                    $class = trim((string)($row[$indexMap['class']] ?? ''));
-                    if ($first === '' || $last === '' || $dob === '' || $gender === '' || $class === '') { continue; }
+                    $segment_id = (int)trim((string)($row[$indexMap['segment_id']] ?? '0'));
+                    $reading_time = trim((string)($row[$indexMap['reading_time']] ?? ''));
+                    $vehicle_count = (int)trim((string)($row[$indexMap['vehicle_count']] ?? '0'));
+                    $avg_speed_kmh = (float)trim((string)($row[$indexMap['avg_speed_kmh']] ?? '0'));
+                    $density = (float)trim((string)($row[$indexMap['density_veh_per_km']] ?? '0'));
+                    $weather = strtolower(trim((string)($row[$indexMap['weather']] ?? 'unknown')));
+
+                    $visibility_m = null;
+                    $temperature_c = null;
+                    $source = 'csv_upload';
+
+                    // Optional columns
+                    $optionalAliases = [
+                        'visibility_m' => ['visibility_m','visibility','vis_m'],
+                        'temperature_c' => ['temperature_c','temperature','temp_c'],
+                        'source' => ['source','data_source']
+                    ];
+                    foreach ($optionalAliases as $okey => $cands) {
+                        foreach ($cands as $cand) {
+                            $pos = array_search($normalize($cand), $normalizedHeader, true);
+                            if ($pos !== false) {
+                                $val = trim((string)($row[$pos] ?? ''));
+                                if ($okey === 'visibility_m' && $val !== '') $visibility_m = (int)$val;
+                                if ($okey === 'temperature_c' && $val !== '') $temperature_c = (float)$val;
+                                if ($okey === 'source' && $val !== '') $source = $val;
+                                break;
+                            }
+                        }
+                    }
+
+                    if ($segment_id <= 0 || $reading_time === '') { continue; }
                     try {
                         $insert->execute([
-                            ':first_name' => $first,
-                            ':last_name' => $last,
-                            ':dob' => $dob,
-                            ':gender' => $gender,
-                            ':class' => $class
+                            ':segment_id' => $segment_id,
+                            ':reading_time' => $reading_time,
+                            ':vehicle_count' => $vehicle_count,
+                            ':avg_speed_kmh' => $avg_speed_kmh,
+                            ':density_veh_per_km' => $density,
+                            ':weather' => ($weather === '' ? 'unknown' : $weather),
+                            ':visibility_m' => $visibility_m,
+                            ':temperature_c' => $temperature_c,
+                            ':source' => $source
                         ]);
                         $count++;
                     } catch (Exception $e) {
@@ -806,12 +675,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                        ->execute([
                            ':user_id' => $_SESSION['user_id'] ?? null,
                            ':action' => 'upload_csv',
-                           ':table_name' => 'students',
+                           ':table_name' => 'traffic_readings',
                            ':new_values' => json_encode(['imported' => $count])
                        ]);
                 } catch (Exception $e) { /* ignore logging errors */ }
 
-                echo json_encode(['success' => true, 'message' => "Imported $count students successfully"]);
+                echo json_encode(['success' => true, 'message' => "Imported $count traffic readings successfully"]);
             } catch (Exception $e) {
                 error_log('Upload error: '.$e->getMessage());
                 echo json_encode(['success' => false, 'message' => 'Upload failed: '.$e->getMessage()]);
@@ -831,16 +700,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Total count across sources
                 $predCount = (int)$db->query("SELECT COUNT(*) FROM audit_log WHERE action = 'prediction'")->fetchColumn();
                 $uplCount = (int)$db->query("SELECT COUNT(*) FROM audit_log WHERE action = 'upload_csv'")->fetchColumn();
-                $stuCount = (int)$db->query("SELECT COUNT(*) FROM students")->fetchColumn();
-                $total = $predCount + $uplCount + $stuCount;
+                $segCount = (int)$db->query("SELECT COUNT(*) FROM road_segments")->fetchColumn();
+                $total = $predCount + $uplCount + $segCount;
 
                 // Unified query with pagination
                 $sql = "SELECT title, created_at, icon, color FROM (
-                            SELECT CONCAT('New prediction completed: ', JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.prediction'))) AS title, created_at, 'fas fa-check' AS icon, '#28a745' AS color FROM audit_log WHERE action = 'prediction'
+                            SELECT CONCAT('New prediction completed: congestion=', JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.congestion_level')), ', risk=', JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.accident_probability'))) AS title,
+                                   created_at, 'fas fa-brain' AS icon, '#6f42c1' AS color
+                            FROM audit_log WHERE action = 'prediction'
                             UNION ALL
-                            SELECT CONCAT('Student data uploaded (', JSON_EXTRACT(new_values, '$.imported'), ' records)') AS title, created_at, 'fas fa-upload' AS icon, '#17a2b8' AS color FROM audit_log WHERE action = 'upload_csv'
+                            SELECT CONCAT('Traffic readings uploaded (', JSON_EXTRACT(new_values, '$.imported'), ' records)') AS title,
+                                   created_at, 'fas fa-upload' AS icon, '#17a2b8' AS color
+                            FROM audit_log WHERE action = 'upload_csv'
                             UNION ALL
-                            SELECT CONCAT('New student added: ', first_name, ' ', last_name) AS title, created_at, 'fas fa-user-plus' AS icon, '#0d6efd' AS color FROM students
+                            SELECT CONCAT('Road segment configured: ', name, ' (', zone, ')') AS title,
+                                   created_at, 'fas fa-road' AS icon, '#0d6efd' AS color
+                            FROM road_segments
                         ) t
                         ORDER BY created_at DESC
                         LIMIT :limit OFFSET :offset";
@@ -873,42 +748,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $reports = [];
 
-                // Performance distribution (fallback to audit_log if predictions table empty)
-                $perfStmt = $db->query("SELECT predicted_label, COUNT(*) as count FROM predictions GROUP BY predicted_label ORDER BY count DESC");
-                $perf = $perfStmt->fetchAll(PDO::FETCH_ASSOC);
-                if (!$perf || count($perf) === 0) {
-                    $alt = $db->prepare("SELECT JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.prediction')) as predicted_label, COUNT(*) as count FROM audit_log WHERE action='prediction' GROUP BY JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.prediction')) ORDER BY count DESC");
+                // Congestion distribution (fallback to audit_log if ai_predictions table empty)
+                $distStmt = $db->query("SELECT congestion_level, COUNT(*) as count FROM ai_predictions GROUP BY congestion_level ORDER BY count DESC");
+                $dist = $distStmt->fetchAll(PDO::FETCH_ASSOC);
+                if (!$dist || count($dist) === 0) {
+                    $alt = $db->prepare("SELECT JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.congestion_level')) as congestion_level, COUNT(*) as count
+                                         FROM audit_log
+                                         WHERE action='prediction'
+                                         GROUP BY JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.congestion_level'))
+                                         ORDER BY count DESC");
                     $alt->execute();
-                    $perf = $alt->fetchAll(PDO::FETCH_ASSOC);
+                    $dist = $alt->fetchAll(PDO::FETCH_ASSOC);
                 }
-                $reports['performance_distribution'] = $perf;
+                $reports['congestion_distribution'] = $dist;
 
-                // Prediction trends (last 30 days)
-                $trendStmt = $db->query("SELECT DATE(created_at) as date, COUNT(*) as count FROM predictions WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY DATE(created_at) ORDER BY date DESC");
+                // Prediction trends (last 30 days) from ai_predictions
+                $trendStmt = $db->query("SELECT DATE(created_at) as date, COUNT(*) as count
+                                         FROM ai_predictions
+                                         WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                                         GROUP BY DATE(created_at)
+                                         ORDER BY date DESC");
                 $reports['prediction_trends'] = $trendStmt->fetchAll(PDO::FETCH_ASSOC);
 
-                // Student statistics
-                $stuStmt = $db->query("SELECT 
-                    COUNT(*) as total_students,
-                    COUNT(CASE WHEN gender = 'Male' THEN 1 END) as male_count,
-                    COUNT(CASE WHEN gender = 'Female' THEN 1 END) as female_count,
-                    COUNT(DISTINCT class) as total_classes
-                    FROM students");
-                $reports['student_stats'] = $stuStmt->fetch(PDO::FETCH_ASSOC);
+                // System stats
+                $segCount = (int)$db->query("SELECT COUNT(*) FROM road_segments")->fetchColumn();
+                $readingCount = (int)$db->query("SELECT COUNT(*) FROM traffic_readings")->fetchColumn();
+                $accCount = (int)$db->query("SELECT COUNT(*) FROM accidents")->fetchColumn();
+                $reports['system_stats'] = [
+                    'total_segments' => $segCount,
+                    'total_readings' => $readingCount,
+                    'total_accidents' => $accCount
+                ];
 
-                // Class distribution
-                $classStmt = $db->query("SELECT class, COUNT(*) as count FROM students GROUP BY class ORDER BY count DESC");
-                $reports['class_distribution'] = $classStmt->fetchAll(PDO::FETCH_ASSOC);
+                // Zone distribution (segments by zone)
+                $zoneStmt = $db->query("SELECT zone, COUNT(*) as count FROM road_segments GROUP BY zone ORDER BY count DESC");
+                $reports['zone_distribution'] = $zoneStmt->fetchAll(PDO::FETCH_ASSOC);
 
-                // Recent predictions with details
-                $recentStmt = $db->query("SELECT 
-                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.student')) as student_name,
-                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.prediction')) as prediction,
+                // Recent predictions with details (from audit_log)
+                $recentStmt = $db->query("SELECT
+                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.segment_id')) as segment_id,
+                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.congestion_level')) as congestion_level,
+                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.accident_probability')) as accident_probability,
                     JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.confidence')) as confidence,
                     created_at
-                    FROM audit_log 
-                    WHERE action = 'prediction' 
-                    ORDER BY created_at DESC 
+                    FROM audit_log
+                    WHERE action = 'prediction'
+                    ORDER BY created_at DESC
                     LIMIT 20");
                 $reports['recent_predictions'] = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -1095,7 +980,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Student Performance Predictor</title>
+    <title>STMAPS Smart Traffic Management</title>
     <link rel="icon" type="image/png" href="logo1.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -2523,7 +2408,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
 
         .copyright {
-            color: var(--secondary-color);
+            color: var(--light-gray);
             margin: 0;
             font-size: 0.95rem;
             font-family: 'Bookman Old Style', 'Times New Roman', serif;
@@ -2537,26 +2422,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
         .copyright-symbol {
             font-size: 1.2rem;
-            color: var(--primary-color);
+            color: var(--white);
             font-weight: 700;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
         }
 
         .copyright-year {
-            color: var(--primary-color);
+            color: var(--white);
             font-weight: 800;
             font-size: 1.3rem;
-            /* text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); */
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
             letter-spacing: 0.5px;
         }
 
         .copyright-company {
-            color: var(--secondary-color);
+            color: var(--light-gray);
             font-weight: 600;
         }
 
         .copyright-rights {
-            color: var(--secondary-color);
+            color: var(--light-gray);
             font-style: italic;
             font-size: 0.9rem;
         }
@@ -3802,8 +3687,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container">
             <a class="navbar-brand" href="#">
-                <img src="logo1.png" alt="AI SAPP Logo" class="navbar-logo me-2">
-                AI Student Performance Predictor
+                <img src="logo1.png" alt="STMAPS Logo" class="navbar-logo me-2">
+                STMAPS
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -3814,7 +3699,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <a class="nav-link" href="#about"><i class="fas fa-info-circle me-1"></i> About</a>
                     <a class="nav-link" href="#contact"><i class="fas fa-envelope me-1"></i> Contact</a>
                     <div class="navbar-logo-right">
-                        <img src="logo1.png" alt="AI SAPP Logo" class="top-right-logo">
+                        <img src="logo1.png" alt="STMAPS Logo" class="top-right-logo">
                     </div>
                     <a href="login.php" class="btn btn-outline-primary me-2 magic-login-btn">
                         <span class="btn-text">
@@ -3852,8 +3737,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         <div class="container">
             <div class="row align-items-center">
                 <div class="col-lg-6">
-                    <h1 class="hero-title">AI-Powered Student Performance Prediction</h1>
-                    <p class="hero-subtitle">Transform education with AI-powered analysis. Predict student performance using advanced machine learning.</p>
+                    <h1 class="hero-title">AI-Based Smart Traffic Management & Accident Prediction</h1>
+                    <p class="hero-subtitle">Optimize traffic flow with AI powered analysis. Predict congestion and accident prone zones using traffic and environmental data.</p>
                     <div class="hero-buttons">
                         <a href="register.php" class="btn btn-primary btn-lg me-3 magic-hero-btn">
                             <span class="btn-text">
@@ -3868,7 +3753,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         </a>
                         <a href="#services" class="btn btn-outline-primary btn-lg magic-services-btn">
                             <span class="btn-text">
-                                <i class="fas fa-crystal-ball me-2"></i>Our Services
+                                <i class="fas fa-route me-2"></i>Our Services
                             </span>
                             <div class="magic-glow"></div>
                         </a>
@@ -3891,7 +3776,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         <div class="container">
             <div class="text-center mb-5">
                 <h2 class="section-title">Our Services</h2>
-                <p class="section-subtitle">AI solutions for educational institutions</p>
+                <p class="section-subtitle">AI solutions for safer and smarter transportation</p>
             </div>
             <div class="row">
                 <div class="col-lg-4 col-md-6 mb-4">
@@ -3899,12 +3784,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <div class="service-icon">
                             <i class="fas fa-brain"></i>
                         </div>
-                        <h4>Performance Prediction</h4>
-                        <p>Advanced ML algorithms to predict student performance with high accuracy.</p>
+                        <h4>Traffic & Accident Prediction</h4>
+                        <p>AI models to predict congestion levels and accident risk with confidence scoring.</p>
                         <ul class="service-features">
-                            <li>Real-time predictions</li>
-                            <li>Confidence scoring</li>
-                            <li>Risk identification</li>
+                            <li>Congestion level prediction</li>
+                            <li>Accident probability scoring</li>
+                            <li>High-risk zone identification</li>
                         </ul>
                     </div>
                 </div>
@@ -3914,10 +3799,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             <i class="fas fa-chart-bar"></i>
                         </div>
                         <h4>Analytics Dashboard</h4>
-                        <p>Analytics and reporting tools to track student progress and performance.</p>
+                        <p>Analytics and reporting tools to monitor traffic flow and safety trends.</p>
                         <ul class="service-features">
                             <li>Interactive dashboards</li>
-                            <li>Custom reports</li>
+                            <li>Heatmap ready risk insights</li>
                             <li>Trend analysis</li>
                         </ul>
                     </div>
@@ -3927,26 +3812,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <div class="service-icon">
                             <i class="fas fa-users"></i>
                         </div>
-                        <h4>Student Management</h4>
-                        <p>Student information management with assessment tracking and performance monitoring.</p>
+                        <h4>Road Segments & Zone Management</h4>
+                        <p>Manage road segments/zones with traffic readings, incident logs, and monitoring.</p>
                         <ul class="service-features">
-                            <li>Student profiles</li>
-                            <li>Assessment tracking</li>
-                            <li>Progress monitoring</li>
+                            <li>Road segment profiles</li>
+                            <li>Traffic readings tracking</li>
+                            <li>Incident/accident monitoring</li>
                         </ul>
                     </div>
                 </div>
                 <div class="col-lg-4 col-md-6 mb-4">
                     <div class="service-card">
                         <div class="service-icon">
-                            <i class="fas fa-graduation-cap"></i>
+                            <i class="fas fa-wave-square"></i>
                         </div>
-                        <h4>AI Academic Analysis</h4>
-                        <p>AI-powered analysis of academic patterns, learning behaviors, and performance factors.</p>
+                        <h4>AI Traffic Pattern Analysis</h4>
+                        <p>AI powered analysis of traffic patterns, road usage behavior, and safety factors.</p>
                         <ul class="service-features">
                             <li>Pattern recognition</li>
-                            <li>Behavioral analysis</li>
-                            <li>Success factors</li>
+                            <li>Congestion drivers</li>
+                            <li>Risk factor insights</li>
                         </ul>
                     </div>
                 </div>
@@ -3955,12 +3840,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <div class="service-icon">
                             <i class="fas fa-shield-alt"></i>
                         </div>
-                        <h4>Early Warning System</h4>
-                        <p>Identify at-risk students for timely intervention and support.</p>
+                        <h4>Alerts & Early Warning System</h4>
+                        <p>Identify congestion and accident prone zones for timely response and safer travel.</p>
                         <ul class="service-features">
                             <li>Risk assessment</li>
                             <li>Early alerts</li>
-                            <li>Intervention tracking</li>
+                            <li>Incident response support</li>
                         </ul>
                     </div>
                 </div>
@@ -3969,8 +3854,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <div class="service-icon">
                             <i class="fas fa-cogs"></i>
                         </div>
-                        <h4>Custom Solutions</h4>
-                        <p>Tailored AI solutions for your institution's unique needs.</p>
+                        <h4>Custom Integrations</h4>
+                        <p>Tailored solutions for your traffic authority’s needs (sensors, cameras, and APIs).</p>
                         <ul class="service-features">
                             <li>Custom models</li>
                             <li>API integration</li>
@@ -3988,12 +3873,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             <div class="row align-items-center">
                 <div class="col-lg-6">
                     <h2 class="section-title">About Our Platform</h2>
-                    <p class="section-subtitle">Revolutionizing education through AI</p>
-                    <p>Our AI-powered platform helps educational institutions identify at-risk students, optimize learning outcomes, and make data-driven decisions.</p>
+                    <p class="section-subtitle">Revolutionizing transportation through AI</p>
+                    <p>STMAPS helps traffic authorities identify congestion hotspots, predict accident prone areas, and make data driven decisions to improve road safety.</p>
                     <div class="feature-list">
                         <div class="feature-item">
                             <i class="fas fa-check-circle"></i>
-                            <span>Advanced ML algorithms with 87% accuracy</span>
+                            <span>AI driven congestion and risk scoring</span>
                         </div>
                         <div class="feature-item">
                             <i class="fas fa-check-circle"></i>
@@ -4001,11 +3886,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         </div>
                         <div class="feature-item">
                             <i class="fas fa-check-circle"></i>
-                            <span>Comprehensive student data analysis</span>
+                            <span>Traffic + environmental factor analysis</span>
                         </div>
                         <div class="feature-item">
                             <i class="fas fa-check-circle"></i>
-                            <span>Early warning system for at-risk students</span>
+                            <span>Early warning alerts for high-risk zones</span>
                         </div>
                     </div>
                 </div>
@@ -4013,15 +3898,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <div class="stats-grid">
                         <div class="stat-item">
                             <div class="stat-number">15,420</div>
-                            <div class="stat-label">Students Analyzed</div>
+                            <div class="stat-label">Segments Monitored</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">94.7%</div>
-                            <div class="stat-label">Prediction Accuracy</div>
+                            <div class="stat-label">Risk Detection</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">28,847</div>
-                            <div class="stat-label">Predictions Made</div>
+                            <div class="stat-label">Predictions Generated</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">99.8%</div>
@@ -4029,11 +3914,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">247</div>
-                            <div class="stat-label">Educational Institutions</div>
+                            <div class="stat-label">Zones Covered</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">1,892</div>
-                            <div class="stat-label">Early Interventions</div>
+                            <div class="stat-label">Alerts Issued</div>
                         </div>
                     </div>
                 </div>
@@ -4046,7 +3931,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         <div class="container">
             <div class="text-center mb-5">
                 <h2 class="section-title">Get In Touch</h2>
-                <p class="section-subtitle">Ready to transform your institution?</p>
+                <p class="section-subtitle">Ready to improve road safety and traffic flow?</p>
             </div>
             <div class="row">
                 <div class="col-lg-8 mx-auto">
@@ -4057,7 +3942,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                     <h4>Contact Information</h4>
                                     <div class="contact-item">
                                         <i class="fas fa-envelope"></i>
-                                        <span>info@studentpredictor.com</span>
+                                        <span>info@stmaps.local</span>
                                     </div>
                                     <div class="contact-item">
                                         <i class="fas fa-phone"></i>
@@ -6030,11 +5915,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 <div class="col-lg-4 col-md-6 mb-4">
                     <div class="footer-section">
                         <h5 class="footer-title">
-                            <i class="fas fa-graduation-cap me-2"></i>
-                            AI Student Performance Predictor
+                            <i class="fas fa-traffic-light me-2"></i>
+                            STMAPS
                         </h5>
                         <p class="footer-description">
-                            Transforming education through artificial intelligence. Our platform helps educational institutions predict student performance and optimize learning outcomes.
+                            Smart traffic management and accident prediction powered by AI. STMAPS supports traffic authorities with real time insights, alerts, and analytics.
                         </p>
                         <div class="social-links">
                             <a href="#" class="social-link"><i class="fab fa-facebook-f"></i></a>
@@ -6048,11 +5933,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <div class="footer-section">
                         <h6 class="footer-heading">Services</h6>
                         <ul class="footer-links">
-                            <li><a href="#services">Performance Prediction</a></li>
+                            <li><a href="#services">Traffic Prediction</a></li>
                             <li><a href="#services">Analytics Dashboard</a></li>
-                            <li><a href="#services">Student Management</a></li>
-                            <li><a href="#services">AI Academic Analysis</a></li>
-                            <li><a href="#services">Early Warning System</a></li>
+                            <li><a href="#services">Zone Management</a></li>
+                            <li><a href="#services">Traffic Data Analysis</a></li>
+                            <li><a href="#services">Alerts & Notifications</a></li>
                             <li><a href="#services">Custom Solutions</a></li>
                         </ul>
                     </div>
@@ -6103,8 +5988,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <div class="footer-bottom">
                         <p class="copyright">
                             <span class="copyright-symbol">&copy;</span>
-                            <span class="copyright-year">2025</span>
-                            <span class="copyright-company">AI Student Performance Predictor</span>
+                            <span class="copyright-year"><script>document.write(new Date().getFullYear())</script></span>
+                            <span class="copyright-company">STMAPS</span>
                             <span class="copyright-rights">All rights reserved.</span>
                         </p>
                     </div>
