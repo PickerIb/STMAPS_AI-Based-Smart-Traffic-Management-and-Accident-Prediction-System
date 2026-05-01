@@ -116,6 +116,4 @@ foreach ($test_scenarios as $scenario) {
     }
 }
 
-echo "🎉 Enhanced AI Prediction System Test Complete!\n";
-echo "All features working with detailed analysis and percentage-based recommendations.\n";
 ?>

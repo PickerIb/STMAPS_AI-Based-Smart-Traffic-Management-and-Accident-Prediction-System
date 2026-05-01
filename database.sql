@@ -13,8 +13,12 @@ USE `smart_traffic_db`;
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `first_name` VARCHAR(100) NULL,
+  `last_name` VARCHAR(100) NULL,
   `username` VARCHAR(100) NOT NULL,
   `email` VARCHAR(190) NOT NULL,
+  `phone_number` VARCHAR(30) NULL,
+  `user_type` ENUM('driver','traffic_authority','administrator') NOT NULL DEFAULT 'traffic_authority',
   `password_hash` VARCHAR(255) NOT NULL,
   `role` ENUM('admin','authority','viewer') NOT NULL DEFAULT 'authority',
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
@@ -23,7 +27,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_username` (`username`),
-  UNIQUE KEY `uq_users_email` (`email`)
+  UNIQUE KEY `uq_users_email` (`email`),
+  UNIQUE KEY `uq_users_phone_number` (`phone_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ----------------------------

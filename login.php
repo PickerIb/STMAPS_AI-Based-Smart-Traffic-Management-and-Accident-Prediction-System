@@ -474,6 +474,17 @@ requireGuest();
                 <div class="invalid-feedback"></div>
             </div>
 
+            <div class="form-group">
+                <label for="userType" class="form-label">User Type</label>
+                <select class="form-control" id="userType" name="user_type" required>
+                    <option value="">Select user type</option>
+                    <option value="driver">Driver</option>
+                    <option value="traffic_authority">Traffic Authorities</option>
+                    <option value="administrator">Administrator</option>
+                </select>
+                <div class="invalid-feedback"></div>
+            </div>
+
 
             
 
@@ -554,6 +565,16 @@ requireGuest();
                 $('#password').addClass('is-valid');
             }
 
+            // Validate user type
+            const userType = $('#userType').val();
+            if (!['driver', 'traffic_authority', 'administrator'].includes(userType)) {
+                $('#userType').addClass('is-invalid');
+                $('#userType').siblings('.invalid-feedback').text('Please select your user type');
+                isValid = false;
+            } else {
+                $('#userType').addClass('is-valid');
+            }
+
             return isValid;
         }
 
@@ -569,7 +590,8 @@ requireGuest();
             // Prepare form data
             const formData = {
                 username: $('#email').val().trim(), // Send as username since backend expects username field
-                password: $('#password').val()
+                password: $('#password').val(),
+                user_type: $('#userType').val()
             };
 
             // Submit via AJAX
@@ -624,7 +646,7 @@ requireGuest();
                             <i class="fas fa-check checkmark"></i>
                         </div>
                         <div class="access-title">Access Granted</div>
-                        <div class="access-subtitle">Welcome back to AI_SAPP</div>
+                        <div class="access-subtitle">Welcome back to AI_STMAPS</div>
                     </div>
                 </div>
             `);

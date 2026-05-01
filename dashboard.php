@@ -7,6 +7,8 @@ requireLogin();
 
 $user_name = $_SESSION['user_name'] ?? 'Authority';
 $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
+$user_type = $_SESSION['user_type'] ?? 'traffic_authority';
+$user_type_label = ucwords(str_replace('_', ' ', $user_type));
 ?>
 
 <!DOCTYPE html>
@@ -259,6 +261,13 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
             color: var(--accent-color);
             font-size: 0.8rem;
             margin: 0;
+        }
+
+        .user-type {
+            color: var(--secondary-color);
+            font-size: 0.78rem;
+            margin: 0;
+            text-transform: capitalize;
         }
 
         /* Content Area */
@@ -606,7 +615,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
             <div class="nav-item">
                 <a href="#analytics" class="nav-link" data-section="analytics">
                     <i class="fas fa-chart-pie nav-icon"></i>
-                    <span class="nav-text">Performance Analytics</span>
+                    <span class="nav-text">Traffic Analytics</span>
                 </a>
             </div>
             <div class="nav-item">
@@ -642,6 +651,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                 <div class="user-info">
                     <div class="user-name"><?php echo htmlspecialchars($user_name); ?></div>
                     <div class="user-email"><?php echo htmlspecialchars($user_email); ?></div>
+                    <div class="user-type"><?php echo htmlspecialchars($user_type_label); ?></div>
                 </div>
             </div>
         </div>
@@ -654,31 +664,31 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                 <div class="stats-grid">
                     <div class="stat-card fade-in">
                         <div class="stat-icon primary">
-                            <i class="fas fa-users"></i>
+                            <i class="fas fa-road"></i>
                         </div>
                         <div class="stat-number" id="totalStudents">0</div>
-                        <div class="stat-label">Total Students</div>
+                        <div class="stat-label">Total Road Segments</div>
                     </div>
                     <div class="stat-card fade-in">
                         <div class="stat-icon secondary">
                             <i class="fas fa-chart-line"></i>
                         </div>
                         <div class="stat-number" id="accuracyRate">0%</div>
-                        <div class="stat-label">Prediction Accuracy</div>
+                        <div class="stat-label">Risk Detection Rate</div>
                     </div>
                     <div class="stat-card fade-in">
                         <div class="stat-icon accent">
                             <i class="fas fa-lightbulb"></i>
                         </div>
                         <div class="stat-number" id="totalPredictions">0</div>
-                        <div class="stat-label">Predictions Made</div>
+                        <div class="stat-label">Predictions Generated</div>
                     </div>
                     <div class="stat-card fade-in">
                         <div class="stat-icon success">
                             <i class="fas fa-clock"></i>
                         </div>
                         <div class="stat-number" id="systemUptime">99.8%</div>
-                        <div class="stat-label">System Uptime</div>
+                        <div class="stat-label">Platform Uptime</div>
                     </div>
                 </div>
 
@@ -866,7 +876,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                 const titles = {
                     'dashboard': 'AI-Based Smart Traffic Management and Accident Prediction System',
                     'predictions': 'Performance Predictions',
-                    'analytics': 'Analytics Dashboard',
+                    'analytics': 'Traffic Analytics Dashboard',
                     'reports': 'Reports & Analytics',
                     'settings': 'System Settings'
                 };
@@ -917,10 +927,17 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                                                 <div class="row">
                                                     <div class="col-md-6">
                                                         <div class="mb-3">
-                                                            <label for="segmentId" class="form-label">Road Segment ID <span class="text-danger">*</span></label>
-                                                            <input type="number" class="form-control" id="segmentId" name="segment_id" min="1" step="1" required
-                                                                   placeholder="e.g., 1">
-                                                            <div class="form-text">Use the segment ID configured in the system</div>
+                                                            <label for="districtName" class="form-label">District <span class="text-danger">*</span></label>
+                                                            <input type="text" class="form-control" id="districtName" list="districtOptions"
+                                                                   placeholder="Type full district name (e.g., Kirehe)" autocomplete="off" required>
+                                                            <datalist id="districtOptions"></datalist>
+                                                            <div class="form-text">Type/select a district, then choose a road segment in that district.</div>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <label for="segmentSelect" class="form-label">Road Segment <span class="text-danger">*</span></label>
+                                                            <select class="form-select" id="segmentSelect" name="segment_id" required>
+                                                                <option value="">Select district first</option>
+                                                            </select>
                                                         </div>
                                                         <div class="mb-3">
                                                             <label for="readingTime" class="form-label">Reading Time <span class="text-danger">*</span></label>
@@ -1027,20 +1044,20 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                         contentDiv.html(`
                             <div class="row">
                                 <div class="col-md-6">
-                                    <h5>AI Performance Analytics</h5>
-                                    <p>Advanced machine learning analysis of student performance patterns and trends.</p>
+                                    <h5>AI Traffic Analytics</h5>
+                                    <p>Advanced machine learning analysis of traffic flow patterns, congestion behavior, and accident risk trends.</p>
                                     <div class="mt-3">
                                         <h6>Key AI Analysis:</h6>
                                         <ul>
-                                            <li>Performance trends identified by AI</li>
-                                            <li>Risk factors for academic success</li>
-                                            <li>Predictive patterns in student data</li>
-                                            <li>ML model performance metrics</li>
+                                            <li>Traffic flow trends identified by AI</li>
+                                            <li>Risk factors for road safety incidents</li>
+                                            <li>Predictive patterns in traffic readings</li>
+                                            <li>Congestion and accident risk model metrics</li>
                                         </ul>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <h5>AI-Generated Grade Distribution</h5>
+                                    <h5>AI Generated Congestion Distribution</h5>
                                     <div class="chart-container">
                                         <canvas id="gradeChart"></canvas>
                                     </div>
@@ -1055,7 +1072,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                                     <div class="d-flex align-items-center justify-content-between">
                                         <div>
                                             <h5 class="mb-1"><i class="fas fa-chart-line me-2"></i>Reports</h5>
-                                            <small class="text-muted">Auto-generated from recent predictions and student data</small>
+                                            <small class="text-muted">Auto-generated from recent traffic readings, zones, and AI risk analysis</small>
                                         </div>
                                         <div class="d-flex gap-2">
                                             <button class="btn btn-success btn-sm" id="btnExportCSV"><i class="fas fa-file-excel me-1"></i> Export as CSV</button>
@@ -1066,7 +1083,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                                 <div class="col-md-6 mb-4">
                                     <div class="card h-100">
                                         <div class="card-body">
-                                            <h6 class="card-title">Performance Distribution</h6>
+                                            <h6 class="card-title">Congestion Level Distribution</h6>
                                             <canvas id="reportPerfDist" height="220"></canvas>
                                         </div>
                                     </div>
@@ -1074,7 +1091,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                                 <div class="col-md-6 mb-4">
                                     <div class="card h-100">
                                         <div class="card-body">
-                                            <h6 class="card-title">Predictions in Last 30 Days</h6>
+                                            <h6 class="card-title">Traffic Readings in Last 30 Days</h6>
                                             <canvas id="reportTrends" height="220"></canvas>
                                         </div>
                                     </div>
@@ -1082,7 +1099,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                                 <div class="col-md-6 mb-4">
                                     <div class="card h-100">
                                         <div class="card-body">
-                                            <h6 class="card-title">Class Distribution</h6>
+                                            <h6 class="card-title">Zone Distribution</h6>
                                             <canvas id="classDistChart" height="220"></canvas>
                                         </div>
                                     </div>
@@ -1090,13 +1107,13 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                                 <div class="col-md-6 mb-4">
                                     <div class="card h-100">
                                         <div class="card-body">
-                                            <h6 class="card-title">Recent Predictions</h6>
+                                            <h6 class="card-title">Recent AI Traffic Risk Predictions</h6>
                                             <div class="table-responsive">
                                                 <table class="table table-sm mb-0">
                                                     <thead>
-                                                        <tr><th>Student</th><th>Prediction</th><th>Confidence</th><th>When</th></tr>
+                                                        <tr><th>Segment</th><th>Congestion</th><th>Accident Risk</th><th>Confidence</th><th>When</th></tr>
                                                     </thead>
-                                                    <tbody id="recentPredTable"><tr><td colspan="4" class="text-muted">Loading...</td></tr></tbody>
+                                                    <tbody id="recentPredTable"><tr><td colspan="5" class="text-muted">Loading...</td></tr></tbody>
                                                 </table>
                                             </div>
                                         </div>
@@ -1154,7 +1171,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                                         <h6>AI Configuration:</h6>
                                         <ul>
                                             <li>Machine Learning Model: <strong>Active</strong></li>
-                                            <li>Prediction Accuracy: <strong>94.7%</strong></li>
+                                            <li>Risk Detection Rate: <strong>94.7%</strong></li>
                                             <li>Data Processing: <strong>Real-time</strong></li>
                                             <li>Model Training: <strong>Automated</strong></li>
                                         </ul>
@@ -1192,7 +1209,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
         function initializeCounters() {
             // Animate counters
             const counters = [
-                { element: '#totalStudents', target: 15420, suffix: '' },
+                { element: '#totalStudents', target: 247, suffix: '' },
                 { element: '#accuracyRate', target: 94.7, suffix: '%' },
                 { element: '#totalPredictions', target: 28847, suffix: '' }
             ];
@@ -1255,18 +1272,21 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
             const gradeEl = document.getElementById('gradeChart');
             if (gradeEl) {
                 const gradeCtx = gradeEl.getContext('2d');
-                // Build from live predictions if available, else static example
+                // Build from live traffic reports if available, else static example
                 $.ajax({
                     url: 'index.php',
                     type: 'POST',
                     data: { action: 'get_reports' },
                     dataType: 'json'
                 }).done(function(res){
-                    let labels = ['Excellent','Good','Average','Poor'];
+                    let labels = ['Low','Moderate','High','Severe'];
                     let counts = [0,0,0,0];
-                    if (res && res.success && res.reports && res.reports.performance_distribution) {
-                        const dist = res.reports.performance_distribution;
-                        labels = dist.map(x => x.predicted_label);
+                    if (res && res.success && res.reports && res.reports.congestion_distribution) {
+                        const dist = res.reports.congestion_distribution;
+                        labels = dist.map(x => {
+                            const raw = String(x.congestion_level || 'no_data');
+                            return raw.charAt(0).toUpperCase() + raw.slice(1);
+                        });
                         counts = dist.map(x => Number(x.count));
                     } else {
                         counts = [5,9,7,3];
@@ -1316,10 +1336,15 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                 if (!res.success) { return; }
                 const r = res.reports || {};
 
-                // Performance Distribution Pie
-                const pd = r.performance_distribution || [];
-                const pdLabels = (pd && pd.length ? pd : [{predicted_label:'No Data',count:1}]).map(x => x.predicted_label || 'No Data');
-                const pdData = (pd && pd.length ? pd : [{predicted_label:'No Data',count:1}]).map(x => Number(x.count) || 1);
+                // Congestion Distribution Pie
+                const pd = r.congestion_distribution || [];
+                const pdFallback = [{ congestion_level: 'no_data', count: 1 }];
+                const pdDataSource = (pd && pd.length ? pd : pdFallback);
+                const pdLabels = pdDataSource.map(x => {
+                    const raw = String(x.congestion_level || 'no_data');
+                    return raw.charAt(0).toUpperCase() + raw.slice(1);
+                });
+                const pdData = pdDataSource.map(x => Number(x.count) || 1);
                 if (document.getElementById('reportPerfDist')) {
                     const ctx = document.getElementById('reportPerfDist').getContext('2d');
                     if (window._perfChart) { window._perfChart.destroy(); }
@@ -1330,38 +1355,45 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                     });
                 }
 
-                // Trends Line
-                const tr = (r.prediction_trends || []).reverse();
+                // Traffic trends line
+                const tr = (r.traffic_trends || []).reverse();
                 const tLabels = tr.map(x => x.date);
                 const tData = tr.map(x => Number(x.count));
                 if (document.getElementById('reportTrends')) {
                     new Chart(document.getElementById('reportTrends'), {
                         type: 'line',
-                        data: { labels: tLabels, datasets: [{ label: 'Predictions', data: tData, borderColor: '#0d6efd', fill: false }] },
+                        data: { labels: tLabels, datasets: [{ label: 'Traffic readings', data: tData, borderColor: '#0d6efd', fill: false }] },
                         options: { scales: { y: { beginAtZero: true } } }
                     });
                 }
 
-                // Class Distribution Bar
-                const cd = r.class_distribution || [];
-                const cLabels = cd.map(x => x.class);
+                // Zone Distribution Bar
+                const cd = r.zone_distribution || [];
+                const cLabels = cd.map(x => x.zone || 'Unknown');
                 const cData = cd.map(x => Number(x.count));
                 if (document.getElementById('classDistChart')) {
                     new Chart(document.getElementById('classDistChart'), {
                         type: 'bar',
-                        data: { labels: cLabels, datasets: [{ label: 'Students', data: cData, backgroundColor: '#6c757d' }] },
+                        data: { labels: cLabels, datasets: [{ label: 'Road segments', data: cData, backgroundColor: '#6c757d' }] },
                         options: { scales: { y: { beginAtZero: true } } }
                     });
                 }
 
-                // Recent predictions table
+                // Recent traffic predictions table
                 const rp = r.recent_predictions || [];
-                const rows = rp.map(x => `<tr><td>${x.student_name || '-'}</td><td>${x.prediction}</td><td>${Math.round((x.confidence||0)*100)}%</td><td>${new Date(x.created_at).toLocaleString()}</td></tr>`).join('');
-                $('#recentPredTable').html(rows || '<tr><td colspan="4" class="text-muted">No recent predictions</td></tr>');
+                const rows = rp.map(x => {
+                    const confidence = Math.round((Number(x.confidence) || 0) * 100);
+                    const accidentRisk = Math.round((Number(x.accident_probability) || 0) * 100);
+                    const congestion = x.congestion_level ? (x.congestion_level.charAt(0).toUpperCase() + x.congestion_level.slice(1)) : '-';
+                    const segment = x.segment_name || (x.segment_id ? `Segment #${x.segment_id}` : '-');
+                    const when = x.created_at ? new Date(x.created_at).toLocaleString() : '-';
+                    return `<tr><td>${segment}</td><td>${congestion}</td><td>${accidentRisk}%</td><td>${confidence}%</td><td>${when}</td></tr>`;
+                }).join('');
+                $('#recentPredTable').html(rows || '<tr><td colspan="5" class="text-muted">No recent traffic predictions</td></tr>');
             });
         }
 
-        // Export: CSV of recent predictions and student stats
+        // Export: CSV of recent AI traffic predictions
         function exportReportsCSV() {
             $.ajax({
                 url: 'index.php',
@@ -1371,16 +1403,22 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
             }).done(function(res){
                 if (!res.success) { showAlert('Failed to export reports', 'danger'); return; }
                 const r = res.reports || {};
-                const rows = [['Student','Prediction','Confidence','Created At']];
+                const rows = [['Segment','Congestion Level','Accident Risk','Confidence','Created At']];
                 (r.recent_predictions || []).forEach(x => {
-                    rows.push([x.student_name||'', x.prediction||'', Math.round((x.confidence||0)*100)+'%', x.created_at||'']);
+                    rows.push([
+                        x.segment_name || (x.segment_id ? `Segment #${x.segment_id}` : ''),
+                        x.congestion_level || '',
+                        Math.round((Number(x.accident_probability)||0)*100) + '%',
+                        Math.round((Number(x.confidence)||0)*100) + '%',
+                        x.created_at || ''
+                    ]);
                 });
                 const csv = rows.map(a => a.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
                 const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'ai_reports_recent_predictions.csv';
+                a.download = 'ai_reports_traffic_predictions.csv';
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             });
@@ -1483,14 +1521,66 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
         }
 
         function initializePredictionFeatures() {
+            let allSegments = [];
+            let districts = [];
+
+            function loadDistricts() {
+                $.ajax({
+                    url: 'index.php',
+                    type: 'POST',
+                    data: { action: 'get_districts' },
+                    dataType: 'json'
+                }).done(function(res) {
+                    if (!res || !res.success || !Array.isArray(res.districts)) return;
+                    districts = res.districts;
+                    $('#districtOptions').html(districts.map(d => `<option value="${d}"></option>`).join(''));
+                });
+            }
+
+            function loadSegmentsByDistrict(districtName) {
+                $('#segmentSelect').html('<option value="">Loading segments...</option>');
+                $.ajax({
+                    url: 'index.php',
+                    type: 'POST',
+                    data: { action: 'get_segments', district: districtName || '' },
+                    dataType: 'json'
+                }).done(function(res) {
+                    if (!res || !res.success || !Array.isArray(res.segments)) {
+                        $('#segmentSelect').html('<option value="">No segments found</option>');
+                        return;
+                    }
+                    allSegments = res.segments;
+                    if (!allSegments.length) {
+                        $('#segmentSelect').html('<option value="">No segments in this district</option>');
+                        return;
+                    }
+                    const options = ['<option value="">Select road segment</option>']
+                        .concat(allSegments.map(s => `<option value="${s.id}">${s.name}</option>`));
+                    $('#segmentSelect').html(options.join(''));
+                }).fail(function() {
+                    $('#segmentSelect').html('<option value="">Failed to load segments</option>');
+                });
+            }
+
             // New Prediction Button
             $(document).on('click', '#newPredictionBtn', function(e) {
                 e.preventDefault();
                 $('#predictionFormSection').slideDown();
                 $('#predictionResultsSection').hide();
+                loadDistricts();
                 $('html, body').animate({
                     scrollTop: $('#predictionFormSection').offset().top - 100
                 }, 500);
+            });
+
+            // District search -> load district segments
+            $(document).on('change blur', '#districtName', function() {
+                const district = ($(this).val() || '').trim();
+                if (!district) {
+                    $('#segmentSelect').html('<option value="">Select district first</option>');
+                    return;
+                }
+                loadSegmentsByDistrict(district);
             });
 
             // Load Sample Data
@@ -1502,25 +1592,35 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                     data: { action: 'load_sample' },
                     dataType: 'json',
                     success: function(data) {
-                        $('#studentName').val('John Smith');
-                        $('#studyHours').val(data.study_hours);
-                        $('#attendanceRate').val(data.attendance_rate);
-                        $('#previousGPA').val(data.previous_gpa);
-                        $('#extracurricularHours').val(data.extracurricular_hours);
-                        $('#familyIncome').val(data.family_income);
-                        $('#parentEducation').val(data.parent_education);
-                        $('#sleepHours').val(data.sleep_hours);
-                        $('#socialMediaHours').val(data.social_media_hours);
-                        $('#studyGroupParticipation').val(data.study_group_participation);
-                        $('#assignmentCompletionRate').val(data.assignment_completion_rate);
-                        
-                        // Load additional sample data
-                        $('#studentAge').val(17);
-                        $('#currentGrade').val('11');
-                        $('#learningStyle').val('mixed');
-                        $('#motivationLevel').val(7);
-                        $('#motivationValue').text('7');
-                        
+                        // Fill core fields
+                        const now = new Date();
+                        const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+                        $('#readingTime').val(data.reading_time ? String(data.reading_time).replace(' ', 'T').slice(0,16) : localDate);
+                        $('#vehicleCount').val(data.vehicle_count);
+                        $('#avgSpeed').val(data.avg_speed_kmh);
+                        $('#density').val(data.density_veh_per_km);
+                        $('#weather').val(data.weather);
+                        $('#visibility').val(data.visibility_m ?? '');
+                        $('#temperature').val(data.temperature_c ?? '');
+
+                        // Resolve district + segment for sample
+                        $.ajax({
+                            url: 'index.php',
+                            type: 'POST',
+                            data: { action: 'get_segments' },
+                            dataType: 'json'
+                        }).done(function(res){
+                            if (!res || !res.success || !Array.isArray(res.segments)) return;
+                            const match = res.segments.find(x => String(x.id) === String(data.segment_id));
+                            if (match) {
+                                $('#districtName').val(match.zone);
+                                loadSegmentsByDistrict(match.zone);
+                                setTimeout(function() {
+                                    $('#segmentSelect').val(String(match.id));
+                                }, 150);
+                            }
+                        });
+
                         showAlert('Sample data loaded successfully! You can now generate a prediction.', 'success');
                     },
                     error: function() {
@@ -1697,52 +1797,33 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
             // Reset validation
             form.find('.form-control').removeClass('is-valid is-invalid');
             form.find('.invalid-feedback').hide();
-            
-            // Validate student name
-            const studentName = $('#studentName').val().trim();
-            if (studentName.length < 2) {
-                $('#studentName').addClass('is-invalid');
-                $('#studentName').siblings('.invalid-feedback').show();
+
+            // District and segment must be selected
+            const districtName = ($('#districtName').val() || '').trim();
+            const segmentId = parseInt($('#segmentSelect').val(), 10);
+            if (!districtName) {
+                $('#districtName').addClass('is-invalid');
                 isValid = false;
             } else {
-                $('#studentName').addClass('is-valid');
+                $('#districtName').addClass('is-valid');
             }
-            
-            // Validate study hours
-            const studyHours = parseFloat($('#studyHours').val());
-            if (isNaN(studyHours) || studyHours < 0 || studyHours > 50) {
-                $('#studyHours').addClass('is-invalid');
+            if (Number.isNaN(segmentId) || segmentId <= 0) {
+                $('#segmentSelect').addClass('is-invalid');
                 isValid = false;
             } else {
-                $('#studyHours').addClass('is-valid');
+                $('#segmentSelect').addClass('is-valid');
             }
-            
-            // Validate attendance rate
-            const attendanceRate = parseFloat($('#attendanceRate').val());
-            if (isNaN(attendanceRate) || attendanceRate < 0 || attendanceRate > 100) {
-                $('#attendanceRate').addClass('is-invalid');
-                isValid = false;
-            } else {
-                $('#attendanceRate').addClass('is-valid');
-            }
-            
-            // Validate GPA
-            const gpa = parseFloat($('#previousGPA').val());
-            if (isNaN(gpa) || gpa < 0 || gpa > 4) {
-                $('#previousGPA').addClass('is-invalid');
-                isValid = false;
-            } else {
-                $('#previousGPA').addClass('is-valid');
-            }
-            
-            // Validate sleep hours
-            const sleepHours = parseFloat($('#sleepHours').val());
-            if (isNaN(sleepHours) || sleepHours < 4 || sleepHours > 12) {
-                $('#sleepHours').addClass('is-invalid');
-                isValid = false;
-            } else {
-                $('#sleepHours').addClass('is-valid');
-            }
+
+            // Core required traffic inputs
+            const vehicleCount = parseInt($('#vehicleCount').val(), 10);
+            const avgSpeed = parseFloat($('#avgSpeed').val());
+            const density = parseFloat($('#density').val());
+            const readingTime = $('#readingTime').val();
+
+            if (!readingTime) { $('#readingTime').addClass('is-invalid'); isValid = false; } else { $('#readingTime').addClass('is-valid'); }
+            if (Number.isNaN(vehicleCount) || vehicleCount < 0 || vehicleCount > 200000) { $('#vehicleCount').addClass('is-invalid'); isValid = false; } else { $('#vehicleCount').addClass('is-valid'); }
+            if (Number.isNaN(avgSpeed) || avgSpeed < 0 || avgSpeed > 200) { $('#avgSpeed').addClass('is-invalid'); isValid = false; } else { $('#avgSpeed').addClass('is-valid'); }
+            if (Number.isNaN(density) || density < 0 || density > 500) { $('#density').addClass('is-invalid'); isValid = false; } else { $('#density').addClass('is-valid'); }
             
             // Check all required fields
             form.find('input[required], select[required]').each(function() {
@@ -1892,6 +1973,16 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
         }
 
         function displayPredictionResults(response) {
+            const generatedNow = new Date().toLocaleString([], {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+
             // Smart Traffic format (new project)
             if (response && (response.congestion_level !== undefined || response.accident_probability !== undefined)) {
                 const level = (response.congestion_level || 'moderate').toString();
@@ -1900,7 +1991,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
                 const congestionIndex = (response.congestion_index !== undefined && response.congestion_index !== null) ? response.congestion_index : '—';
                 const explanations = response.explanations || [];
                 const recommendations = response.recommendations || [];
-                const timestamp = response.timestamp || new Date().toLocaleString();
+                const timestamp = generatedNow;
 
                 const badgeMap = {
                     low:    { cls: 'bg-success text-white', icon: 'fas fa-check-circle', color: '#28a745' },
@@ -1993,7 +2084,7 @@ $user_email = $_SESSION['user_email'] ?? 'authority@example.com';
             const probabilities = response.probabilities;
             const riskFactors = response.risk_factors || [];
             const recommendations = response.recommendations || [];
-            const timestamp = response.timestamp || new Date().toLocaleString();
+            const timestamp = generatedNow;
             
             let badgeClass = '';
             let iconClass = '';

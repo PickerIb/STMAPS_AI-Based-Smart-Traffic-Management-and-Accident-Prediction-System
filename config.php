@@ -188,8 +188,12 @@ class User {
     private $table_name = "users";
     
     public $id;
+    public $first_name;
+    public $last_name;
     public $username;
     public $email;
+    public $phone_number;
+    public $user_type;
     public $password_hash;
     public $role;
     public $is_active;
@@ -202,13 +206,17 @@ class User {
     
     public function create() {
         $query = "INSERT INTO " . $this->table_name . " 
-                  (username, email, password_hash, role, is_active) 
-                  VALUES (:username, :email, :password_hash, :role, :is_active)";
+                  (first_name, last_name, username, email, phone_number, user_type, password_hash, role, is_active) 
+                  VALUES (:first_name, :last_name, :username, :email, :phone_number, :user_type, :password_hash, :role, :is_active)";
         
         $stmt = $this->conn->prepare($query);
         
+        $stmt->bindParam(':first_name', $this->first_name);
+        $stmt->bindParam(':last_name', $this->last_name);
         $stmt->bindParam(':username', $this->username);
         $stmt->bindParam(':email', $this->email);
+        $stmt->bindParam(':phone_number', $this->phone_number);
+        $stmt->bindParam(':user_type', $this->user_type);
         $stmt->bindParam(':password_hash', $this->password_hash);
         $stmt->bindParam(':role', $this->role);
         $stmt->bindParam(':is_active', $this->is_active);
@@ -230,8 +238,12 @@ class User {
         
         if($row) {
             $this->id = $row['id'];
+            $this->first_name = $row['first_name'] ?? null;
+            $this->last_name = $row['last_name'] ?? null;
             $this->username = $row['username'];
             $this->email = $row['email'];
+            $this->phone_number = $row['phone_number'] ?? null;
+            $this->user_type = $row['user_type'] ?? null;
             $this->password_hash = $row['password_hash'];
             $this->role = $row['role'];
             $this->is_active = $row['is_active'];
@@ -252,8 +264,12 @@ class User {
         
         if($row) {
             $this->id = $row['id'];
+            $this->first_name = $row['first_name'] ?? null;
+            $this->last_name = $row['last_name'] ?? null;
             $this->username = $row['username'];
             $this->email = $row['email'];
+            $this->phone_number = $row['phone_number'] ?? null;
+            $this->user_type = $row['user_type'] ?? null;
             $this->password_hash = $row['password_hash'];
             $this->role = $row['role'];
             $this->is_active = $row['is_active'];
@@ -287,6 +303,14 @@ class User {
         $query = "SELECT id FROM " . $this->table_name . " WHERE username = :username LIMIT 1";
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':username', $username);
+        $stmt->execute();
+        return $stmt->rowCount() > 0;
+    }
+
+    public function phoneExists($phone_number) {
+        $query = "SELECT id FROM " . $this->table_name . " WHERE phone_number = :phone_number LIMIT 1";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':phone_number', $phone_number);
         $stmt->execute();
         return $stmt->rowCount() > 0;
     }

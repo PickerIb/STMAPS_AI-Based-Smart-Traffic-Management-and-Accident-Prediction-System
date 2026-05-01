@@ -2,6 +2,13 @@
 // Include config first to set session configuration
 require_once 'config.php';
 session_start();
+$smsConfig = null;
+if (file_exists(__DIR__ . '/sms_settings.php')) {
+    $smsConfig = require __DIR__ . '/sms_settings.php';
+}
+if (file_exists(__DIR__ . '/sms_parse.php')) {
+    require_once __DIR__ . '/sms_parse.php';
+}
 
 // Redirect logged-in users to dashboard only for normal page loads (not AJAX/action requests)
 if (isLoggedIn()) {
@@ -117,6 +124,91 @@ function clamp01($x) {
     if ($x < 0) return 0.0;
     if ($x > 1) return 1.0;
     return (float)$x;
+}
+
+function normalizeRwandaPhone($rawPhone) {
+    $clean = preg_replace('/[^0-9+]/', '', (string)$rawPhone);
+    $clean = ltrim($clean);
+
+    if (preg_match('/^\+2507\d{8}$/', $clean)) {
+        return $clean;
+    }
+    if (preg_match('/^2507\d{8}$/', $clean)) {
+        return '+' . $clean;
+    }
+    if (preg_match('/^07\d{8}$/', $clean)) {
+        return '+250' . substr($clean, 1);
+    }
+    if (preg_match('/^7\d{8}$/', $clean)) {
+        return '+250' . $clean;
+    }
+
+    return false;
+}
+
+function sendRegistrationSms($phone, $fullName, $smsConfig, $meta = []) {
+    $logSmsAttempt = function(array $payload) {
+        $logDir = __DIR__ . '/logs';
+        if (!is_dir($logDir)) {
+            @mkdir($logDir, 0777, true);
+        }
+        $payload['timestamp'] = date('c');
+        @file_put_contents(
+            $logDir . '/sms_registration.log',
+            json_encode($payload, JSON_UNESCAPED_SLASHES) . PHP_EOL,
+            FILE_APPEND | LOCK_EX
+        );
+    };
+
+    if (!is_array($smsConfig) || empty($smsConfig['enabled'])) {
+        $data = ['sent' => false, 'reason' => 'sms_disabled', 'phone' => $phone];
+        $logSmsAttempt($data);
+        return $data;
+    }
+    if (!class_exists('hdev_sms')) {
+        $data = ['sent' => false, 'reason' => 'sms_class_not_loaded', 'phone' => $phone];
+        $logSmsAttempt($data);
+        return $data;
+    }
+
+    $apiId = trim((string)($smsConfig['api_id'] ?? ''));
+    $apiKey = trim((string)($smsConfig['api_key'] ?? ''));
+    $senderId = trim((string)($smsConfig['sender_id'] ?? ''));
+    if ($apiId === '' || $apiKey === '' || $senderId === '') {
+        $data = ['sent' => false, 'reason' => 'sms_credentials_missing', 'phone' => $phone];
+        $logSmsAttempt($data);
+        return $data;
+    }
+
+    $name = trim((string)$fullName);
+    if ($name === '') {
+        $name = 'User';
+    }
+
+    $username = trim((string)($meta['username'] ?? ''));
+    $userType = trim((string)($meta['user_type'] ?? ''));
+    $userTypeLabel = $userType !== '' ? ucwords(str_replace('_', ' ', $userType)) : 'User';
+
+    $message = "Dear {$name}, thank you for registering on STMAPS. " .
+               "Your account has been created successfully as {$userTypeLabel}.";
+    if ($username !== '') {
+        $message .= " Username: {$username}.";
+    }
+    $message .= " You can now log in and continue using the system.";
+
+    try {
+        hdev_sms::api_id($apiId);
+        hdev_sms::api_key($apiKey);
+        $result = hdev_sms::send($senderId, $phone, $message);
+        $data = ['sent' => true, 'phone' => $phone, 'sender_id' => $senderId, 'response' => $result];
+        $logSmsAttempt($data);
+        return $data;
+    } catch (Throwable $e) {
+        error_log('SMS send failed: ' . $e->getMessage());
+        $data = ['sent' => false, 'reason' => 'sms_exception', 'phone' => $phone, 'error' => $e->getMessage()];
+        $logSmsAttempt($data);
+        return $data;
+    }
 }
 
 function computeCongestionIndex($data) {
@@ -236,8 +328,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $last_name = $_POST['last_name'] ?? '';
                 $username = $_POST['username'] ?? '';
                 $email = $_POST['email'] ?? '';
+                $phone_number = $_POST['phone_number'] ?? '';
+                $user_type = $_POST['user_type'] ?? '';
                 $password = $_POST['password'] ?? '';
                 $confirm_password = $_POST['confirm_password'] ?? '';
+                $normalized_phone = normalizeRwandaPhone($phone_number);
                 
                 // Debug: Log received data
                 error_log('Registration attempt: ' . json_encode($_POST));
@@ -249,6 +344,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if (empty($last_name)) $errors[] = 'Last name is required';
                 if (empty($username)) $errors[] = 'Username is required';
                 if (empty($email)) $errors[] = 'Email is required';
+                if (empty($phone_number)) $errors[] = 'Phone number is required';
+                if (empty($user_type)) $errors[] = 'User type is required';
                 if (empty($password)) $errors[] = 'Password is required';
                 if (empty($confirm_password)) $errors[] = 'Please confirm your password';
                 
@@ -260,6 +357,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 // Format validation
                 if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Invalid email format';
+                if (!empty($phone_number) && $normalized_phone === false) {
+                    $errors[] = 'Phone number must be a valid Rwanda number (e.g. +2507XXXXXXXX or 07XXXXXXXX)';
+                }
+                if (!in_array($user_type, ['driver', 'traffic_authority'], true)) {
+                    $errors[] = 'Invalid user type selected';
+                }
                 
                 // Password match validation
                 if (!empty($password) && !empty($confirm_password) && $password !== $confirm_password) {
@@ -275,16 +378,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if (!empty($username) && $user->usernameExists($username)) {
                     $errors[] = 'Username already exists';
                 }
+
+                // Check if phone already exists (using normalized Rwanda format)
+                if ($normalized_phone !== false && $user->phoneExists($normalized_phone)) {
+                    $errors[] = 'Phone number already exists';
+                }
                 
                 if (empty($errors)) {
                     // Create new user
+                    $cleanFirstName = trim($first_name);
+                    $cleanLastName = trim($last_name);
                     $user->username = trim($username);
                     $user->email = trim($email);
+                    $user->phone_number = $normalized_phone;
+                    $user->user_type = $user_type;
+                    $user->first_name = $cleanFirstName;
+                    $user->last_name = $cleanLastName;
                     $user->password_hash = password_hash($password, PASSWORD_DEFAULT);
-                    $user->role = 'viewer'; // Default role (matching actual enum values: admin, teacher, viewer)
+                    $user->role = ($user_type === 'traffic_authority') ? 'authority' : 'viewer';
                     $user->is_active = 1;
                     
                     if ($user->create()) {
+                        // Send registration SMS (best-effort, does not block account creation)
+                        sendRegistrationSms(
+                            $user->phone_number,
+                            $cleanFirstName . ' ' . $cleanLastName,
+                            $smsConfig,
+                            [
+                                'username' => $user->username,
+                                'user_type' => $user->user_type
+                            ]
+                        );
+
                         // Don't set session variables - force user to login
                         // This ensures user goes to login page after registration
                         
@@ -294,8 +419,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             'redirect' => 'login.php',
                             'user_data' => [
                                 'name' => $first_name . ' ' . $last_name,
+                                'first_name' => $cleanFirstName,
+                                'last_name' => $cleanLastName,
                                 'email' => $user->email,
-                                'username' => $user->username
+                                'username' => $user->username,
+                                'phone_number' => $user->phone_number,
+                                'user_type' => $user->user_type
                             ]
                         ]);
                     } else {
@@ -341,14 +470,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 $username = $_POST['username'] ?? '';
                 $password = $_POST['password'] ?? '';
+                $user_type = $_POST['user_type'] ?? '';
                 
                 // Debug: Log received data
                 error_log('Login attempt: username=' . $username . ', password_length=' . strlen($password));
                 
-                if (empty($username) || empty($password)) {
+                if (empty($username) || empty($password) || empty($user_type)) {
                     echo json_encode([
                         'success' => false,
-                        'message' => 'Username and password are required'
+                        'message' => 'Username/email, password, and user type are required'
                     ]);
                 } else {
                     // Try to find user by email or username
@@ -364,15 +494,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     error_log('User found: ' . ($userFound ? 'yes' : 'no'));
                     
                     if ($userFound && $user->verifyPassword($password)) {
+                        $storedType = $user->user_type ?? '';
+                        if ($storedType === '' || $storedType === null) {
+                            if ($user->role === 'admin') {
+                                $storedType = 'administrator';
+                            } elseif ($user->role === 'authority') {
+                                $storedType = 'traffic_authority';
+                            } else {
+                                $storedType = 'driver';
+                            }
+                        }
+                        if ($storedType !== $user_type) {
+                            echo json_encode([
+                                'success' => false,
+                                'message' => 'Selected user type does not match this account'
+                            ]);
+                            exit;
+                        }
                         if ($user->is_active) {
                             // Update last login
                             $user->updateLastLogin();
                             
                             // Set session variables
+                            $displayName = trim((string)($user->first_name ?? '') . ' ' . (string)($user->last_name ?? ''));
+                            if ($displayName === '') {
+                                $displayName = $user->username;
+                            }
                             $_SESSION['user_id'] = $user->id;
-                            $_SESSION['user_name'] = $user->username; // Using username since no full_name field
+                            $_SESSION['user_name'] = $displayName;
+                            $_SESSION['first_name'] = $user->first_name ?? '';
+                            $_SESSION['last_name'] = $user->last_name ?? '';
                             $_SESSION['user_email'] = $user->email;
                             $_SESSION['user_role'] = $user->role;
+                            $_SESSION['user_type'] = $storedType;
                             
                             echo json_encode([
                                 'success' => true,
@@ -762,13 +916,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
                 $reports['congestion_distribution'] = $dist;
 
-                // Prediction trends (last 30 days) from ai_predictions
-                $trendStmt = $db->query("SELECT DATE(created_at) as date, COUNT(*) as count
-                                         FROM ai_predictions
-                                         WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                                         GROUP BY DATE(created_at)
+                // Traffic readings trend (last 30 days) from traffic_readings
+                $trendStmt = $db->query("SELECT DATE(reading_time) as date, COUNT(*) as count
+                                         FROM traffic_readings
+                                         WHERE reading_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                                         GROUP BY DATE(reading_time)
                                          ORDER BY date DESC");
-                $reports['prediction_trends'] = $trendStmt->fetchAll(PDO::FETCH_ASSOC);
+                $reports['traffic_trends'] = $trendStmt->fetchAll(PDO::FETCH_ASSOC);
 
                 // System stats
                 $segCount = (int)$db->query("SELECT COUNT(*) FROM road_segments")->fetchColumn();
@@ -784,22 +938,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $zoneStmt = $db->query("SELECT zone, COUNT(*) as count FROM road_segments GROUP BY zone ORDER BY count DESC");
                 $reports['zone_distribution'] = $zoneStmt->fetchAll(PDO::FETCH_ASSOC);
 
-                // Recent predictions with details (from audit_log)
+                // Recent predictions with details and segment names (from audit_log)
                 $recentStmt = $db->query("SELECT
-                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.segment_id')) as segment_id,
-                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.congestion_level')) as congestion_level,
-                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.accident_probability')) as accident_probability,
-                    JSON_UNQUOTE(JSON_EXTRACT(new_values, '$.confidence')) as confidence,
-                    created_at
-                    FROM audit_log
-                    WHERE action = 'prediction'
-                    ORDER BY created_at DESC
+                    JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.segment_id')) as segment_id,
+                    COALESCE(rs.name, CONCAT('Segment #', JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.segment_id')))) as segment_name,
+                    JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.congestion_level')) as congestion_level,
+                    JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.accident_probability')) as accident_probability,
+                    JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.confidence')) as confidence,
+                    al.created_at
+                    FROM audit_log al
+                    LEFT JOIN road_segments rs ON rs.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.segment_id')) AS UNSIGNED)
+                    WHERE al.action = 'prediction'
+                    ORDER BY al.created_at DESC
                     LIMIT 20");
                 $reports['recent_predictions'] = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
 
                 echo json_encode(['success' => true, 'reports' => $reports]);
             } catch (Exception $e) {
                 echo json_encode(['success' => false, 'message' => 'Failed to load reports: ' . $e->getMessage()]);
+            }
+            exit;
+
+        case 'get_segments':
+            try {
+                $database = new Database();
+                $db = $database->getConnection();
+                if ($db === null) { throw new Exception('DB connection failed'); }
+
+                $district = trim($_POST['district'] ?? '');
+                if ($district !== '') {
+                    // District-first filter (case-insensitive via collation)
+                    $stmt = $db->prepare("SELECT id, name, zone FROM road_segments WHERE is_active = 1 AND zone = :zone ORDER BY name ASC");
+                    $stmt->bindValue(':zone', $district);
+                    $stmt->execute();
+                } else {
+                    $stmt = $db->prepare("SELECT id, name, zone FROM road_segments WHERE is_active = 1 ORDER BY zone ASC, name ASC");
+                    $stmt->execute();
+                }
+                $segments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                echo json_encode(['success' => true, 'segments' => $segments]);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'message' => 'Failed to load segments: ' . $e->getMessage()]);
+            }
+            exit;
+
+        case 'get_districts':
+            try {
+                $database = new Database();
+                $db = $database->getConnection();
+                if ($db === null) { throw new Exception('DB connection failed'); }
+
+                $stmt = $db->prepare("SELECT DISTINCT zone FROM road_segments WHERE is_active = 1 AND zone IS NOT NULL AND zone <> '' ORDER BY zone ASC");
+                $stmt->execute();
+                $districts = array_map(function($row) {
+                    return $row['zone'];
+                }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+
+                echo json_encode(['success' => true, 'districts' => $districts]);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'message' => 'Failed to load districts: ' . $e->getMessage()]);
             }
             exit;
         
@@ -3950,7 +4148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                     </div>
                                     <div class="contact-item">
                                         <i class="fas fa-map-marker-alt"></i>
-                                        <span>Gisenyi, Rubavu</span>
+                                        <span>Kigali,Rwanda</span>
                                     </div>
                                 </div>
                             </div>

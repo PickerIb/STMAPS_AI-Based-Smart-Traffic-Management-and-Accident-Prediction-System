@@ -649,6 +649,23 @@ requireGuest();
             </div>
 
             <div class="form-group">
+                <label for="phoneNumber" class="form-label">Phone Number</label>
+                <input type="tel" class="form-control" id="phoneNumber" name="phone_number" placeholder="+2507XXXXXXXX or 07XXXXXXXX" required>
+                <small class="text-muted">Rwanda format only: +2507XXXXXXXX or 07XXXXXXXX</small>
+                <div class="invalid-feedback"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="userType" class="form-label">User Type</label>
+                <select class="form-control" id="userType" name="user_type" required>
+                    <option value="">Select user type</option>
+                    <option value="driver">Driver</option>
+                    <option value="traffic_authority">Traffic Authorities</option>
+                </select>
+                <div class="invalid-feedback"></div>
+            </div>
+
+            <div class="form-group">
                 <label for="password" class="form-label">Password</label>
                 <div class="position-relative">
                     <input type="password" class="form-control" id="password" name="password" required>
@@ -896,6 +913,28 @@ requireGuest();
                 $('#username').addClass('is-valid');
             }
 
+            // Validate Rwanda phone number
+            const phoneNumberRaw = $('#phoneNumber').val().trim();
+            const normalizedPhone = normalizeRwandaPhone(phoneNumberRaw);
+            if (!normalizedPhone) {
+                $('#phoneNumber').addClass('is-invalid');
+                $('#phoneNumber').siblings('.invalid-feedback').text('Use Rwanda format: +2507XXXXXXXX or 07XXXXXXXX');
+                isValid = false;
+            } else {
+                $('#phoneNumber').val(normalizedPhone);
+                $('#phoneNumber').addClass('is-valid');
+            }
+
+            // Validate user type (administrator is intentionally excluded here)
+            const userType = $('#userType').val();
+            if (!['driver', 'traffic_authority'].includes(userType)) {
+                $('#userType').addClass('is-invalid');
+                $('#userType').siblings('.invalid-feedback').text('Please select a valid user type');
+                isValid = false;
+            } else {
+                $('#userType').addClass('is-valid');
+            }
+
             // Validate password
             const password = $('#password').val();
             if (password.length < 8) {
@@ -934,6 +973,8 @@ requireGuest();
                 last_name: $('#lastName').val().trim(),
                 email: $('#email').val().trim(),
                 username: $('#username').val().trim(),
+                phone_number: $('#phoneNumber').val().trim(),
+                user_type: $('#userType').val(),
                 password: $('#password').val(),
                 confirm_password: $('#confirmPassword').val()
             };
@@ -1028,6 +1069,16 @@ requireGuest();
                 </div>
             `;
             $('#alertContainer').html(alertHtml);
+        }
+
+        function normalizeRwandaPhone(rawPhone) {
+            const cleaned = String(rawPhone || '').replace(/[^\d+]/g, '');
+
+            if (/^\+2507\d{8}$/.test(cleaned)) return cleaned;
+            if (/^2507\d{8}$/.test(cleaned)) return `+${cleaned}`;
+            if (/^07\d{8}$/.test(cleaned)) return `+250${cleaned.slice(1)}`;
+            if (/^7\d{8}$/.test(cleaned)) return `+250${cleaned}`;
+            return null;
         }
     </script>
 </body>
