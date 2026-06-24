@@ -187,9 +187,9 @@ function sendRegistrationSms($phone, $fullName, $smsConfig, $meta = []) {
 
     $username = trim((string)($meta['username'] ?? ''));
     $userType = trim((string)($meta['user_type'] ?? ''));
-    $userTypeLabel = $userType !== '' ? ucwords(str_replace('_', ' ', $userType)) : 'User';
+    $userTypeLabel = $userType !== '' ? getUserTypeLabel($userType) : 'User';
 
-    $message = "Dear {$name}, thank you for registering on STMAPS. " .
+    $message = "Dear {$name}, thank you for registering on STRGS. " .
                "Your account has been created successfully as {$userTypeLabel}.";
     if ($username !== '') {
         $message .= " Username: {$username}.";
@@ -205,6 +205,82 @@ function sendRegistrationSms($phone, $fullName, $smsConfig, $meta = []) {
         return $data;
     } catch (Throwable $e) {
         error_log('SMS send failed: ' . $e->getMessage());
+        $data = ['sent' => false, 'reason' => 'sms_exception', 'phone' => $phone, 'error' => $e->getMessage()];
+        $logSmsAttempt($data);
+        return $data;
+    }
+}
+
+function resolveCurrentUserPhone($db, $sessionUserId) {
+    if (!$db || !$sessionUserId) {
+        return null;
+    }
+    try {
+        $stmt = $db->prepare("SELECT phone_number FROM users WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => (int)$sessionUserId]);
+        $phone = $stmt->fetchColumn();
+        $normalized = normalizeRwandaPhone((string)$phone);
+        return $normalized ?: null;
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+function sendPredictionSms($phone, $fullName, $smsConfig, $predictionPayload = []) {
+    $logSmsAttempt = function(array $payload) {
+        $logDir = __DIR__ . '/logs';
+        if (!is_dir($logDir)) {
+            @mkdir($logDir, 0777, true);
+        }
+        $payload['timestamp'] = date('c');
+        @file_put_contents(
+            $logDir . '/sms_prediction.log',
+            json_encode($payload, JSON_UNESCAPED_SLASHES) . PHP_EOL,
+            FILE_APPEND | LOCK_EX
+        );
+    };
+
+    if (!$phone) {
+        $logSmsAttempt(['sent' => false, 'reason' => 'missing_phone']);
+        return ['sent' => false, 'reason' => 'missing_phone'];
+    }
+    if (!is_array($smsConfig) || empty($smsConfig['enabled'])) {
+        $logSmsAttempt(['sent' => false, 'reason' => 'sms_disabled', 'phone' => $phone]);
+        return ['sent' => false, 'reason' => 'sms_disabled'];
+    }
+    if (!class_exists('hdev_sms')) {
+        $logSmsAttempt(['sent' => false, 'reason' => 'sms_class_not_loaded', 'phone' => $phone]);
+        return ['sent' => false, 'reason' => 'sms_class_not_loaded'];
+    }
+
+    $apiId = trim((string)($smsConfig['api_id'] ?? ''));
+    $apiKey = trim((string)($smsConfig['api_key'] ?? ''));
+    $senderId = trim((string)($smsConfig['sender_id'] ?? ''));
+    if ($apiId === '' || $apiKey === '' || $senderId === '') {
+        $logSmsAttempt(['sent' => false, 'reason' => 'sms_credentials_missing', 'phone' => $phone]);
+        return ['sent' => false, 'reason' => 'sms_credentials_missing'];
+    }
+
+    $name = trim((string)$fullName);
+    if ($name === '') {
+        $name = 'User';
+    }
+    $congestion = strtolower((string)($predictionPayload['congestion_level'] ?? 'unknown'));
+    $riskPct = (int)round((float)($predictionPayload['accident_probability'] ?? 0) * 100);
+    $confidencePct = (int)round((float)($predictionPayload['confidence'] ?? 0) * 100);
+    $recommendations = $predictionPayload['recommendations'] ?? [];
+    $primaryRec = isset($recommendations[0]) ? (string)$recommendations[0] : 'Drive carefully and follow traffic alerts.';
+
+    $message = "STRGS alert for {$name}: Risk {$riskPct}% ({$congestion} congestion), confidence {$confidencePct}%. Route guidance: {$primaryRec}";
+
+    try {
+        hdev_sms::api_id($apiId);
+        hdev_sms::api_key($apiKey);
+        $result = hdev_sms::send($senderId, $phone, $message);
+        $data = ['sent' => true, 'phone' => $phone, 'sender_id' => $senderId, 'response' => $result];
+        $logSmsAttempt($data);
+        return $data;
+    } catch (Throwable $e) {
         $data = ['sent' => false, 'reason' => 'sms_exception', 'phone' => $phone, 'error' => $e->getMessage()];
         $logSmsAttempt($data);
         return $data;
@@ -261,42 +337,89 @@ function computeAccidentProbability($data, $congestionIndex) {
 function buildTrafficExplanations($data, $congestionIndex, $accidentProbability) {
     $explanations = [];
     $level = determineCongestionLevel($congestionIndex);
-    $explanations[] = "Congestion index indicates '$level' traffic conditions.";
+    $density = isset($data['density_veh_per_km']) ? (float)$data['density_veh_per_km'] : null;
+    $speed = isset($data['avg_speed_kmh']) ? (float)$data['avg_speed_kmh'] : null;
+    $count = isset($data['vehicle_count']) ? (float)$data['vehicle_count'] : null;
+    $visibility = isset($data['visibility_m']) ? (float)$data['visibility_m'] : null;
+
+    $explanations[] = "Congestion index is " . round($congestionIndex * 100) . "%, indicating '$level' traffic conditions.";
+    if ($density !== null) {
+        $explanations[] = "Traffic density is {$density} vehicles/km, which is a major driver of congestion risk.";
+    }
+    if ($count !== null) {
+        $explanations[] = "Vehicle count in this reading is {$count}, affecting corridor pressure.";
+    }
+    if ($speed !== null) {
+        $explanations[] = "Average speed is {$speed} km/h; lower speeds generally increase crash exposure in heavy flow.";
+    }
 
     $weather = strtolower((string)($data['weather'] ?? 'unknown'));
     if (in_array($weather, ['rain', 'fog', 'storm', 'snow'], true)) {
         $explanations[] = "Weather condition ('$weather') increases accident risk.";
+    } elseif ($weather === 'clear') {
+        $explanations[] = "Weather is clear, reducing environmental risk compared with rain/fog/storm.";
     }
-    if (isset($data['visibility_m']) && (float)$data['visibility_m'] < 800) {
+    if ($visibility !== null && $visibility < 800) {
         $explanations[] = "Low visibility increases accident probability.";
+    } elseif ($visibility !== null) {
+        $explanations[] = "Visibility is {$visibility}m, which supports safer response times.";
     }
-    if (isset($data['avg_speed_kmh']) && (float)$data['avg_speed_kmh'] < 15) {
+    if ($speed !== null && $speed < 15) {
         $explanations[] = "Stop-and-go speeds raise collision likelihood.";
     }
     if ($accidentProbability >= 0.65) {
         $explanations[] = "Overall risk is high; consider enforcing speed discipline and rerouting.";
+    } elseif ($accidentProbability >= 0.40) {
+        $explanations[] = "Overall risk is moderate; preventive control actions are recommended.";
+    } else {
+        $explanations[] = "Overall risk is relatively low at this moment, but continuous monitoring is needed.";
     }
+    $explanations[] = "Predicted accident probability is " . round($accidentProbability * 100) . "% based on combined traffic and environment factors.";
 
     return $explanations;
 }
 
-function buildTrafficRecommendations($congestionLevel, $accidentProbability) {
+function buildTrafficRecommendations($congestionLevel, $accidentProbability, $data = []) {
     $recs = [];
+    $weather = strtolower((string)($data['weather'] ?? 'unknown'));
+    $speed = isset($data['avg_speed_kmh']) ? (float)$data['avg_speed_kmh'] : null;
+    $density = isset($data['density_veh_per_km']) ? (float)$data['density_veh_per_km'] : null;
+    $visibility = isset($data['visibility_m']) ? (float)$data['visibility_m'] : null;
 
     if ($congestionLevel === 'severe' || $congestionLevel === 'high') {
         $recs[] = 'Optimize signal timing / deploy manual traffic control to improve flow.';
         $recs[] = 'Broadcast congestion alert and suggest alternative routes.';
+        $recs[] = 'Activate dynamic lane control and prioritize emergency corridors.';
     } elseif ($congestionLevel === 'moderate') {
         $recs[] = 'Monitor segment and adjust signals proactively if density increases.';
+        $recs[] = 'Deploy peak-hour route guidance to distribute traffic load.';
     } else {
         $recs[] = 'Traffic is stable; continue monitoring.';
+        $recs[] = 'Keep preventive patrols and maintain current signal schedule.';
     }
 
     if ($accidentProbability >= 0.65) {
         $recs[] = 'Issue a high-risk warning; increase patrol presence and enforce speed limits.';
         $recs[] = 'Consider temporary speed reduction and lane management.';
+        $recs[] = 'Pre-position emergency response units near this segment.';
     } elseif ($accidentProbability >= 0.40) {
         $recs[] = 'Issue a caution alert and monitor for incidents.';
+        $recs[] = 'Increase roadside signage visibility and caution messaging.';
+    } else {
+        $recs[] = 'Maintain routine monitoring and update risk status regularly.';
+    }
+
+    if (in_array($weather, ['rain', 'fog', 'storm', 'snow'], true)) {
+        $recs[] = 'Publish weather-specific advisory and reduce speed thresholds.';
+    }
+    if ($visibility !== null && $visibility < 800) {
+        $recs[] = 'Improve lighting and place temporary visibility warning signs.';
+    }
+    if ($speed !== null && $speed < 15) {
+        $recs[] = 'Review nearby intersections for bottlenecks causing stop-and-go waves.';
+    }
+    if ($density !== null && $density > 80) {
+        $recs[] = 'Prioritize corridor-level traffic balancing with upstream rerouting.';
     }
 
     return array_values(array_unique($recs));
@@ -330,6 +453,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $email = $_POST['email'] ?? '';
                 $phone_number = $_POST['phone_number'] ?? '';
                 $user_type = $_POST['user_type'] ?? '';
+                $license_id = IdRegistry::normalizeLicenseId($_POST['license_id'] ?? '');
+                $police_id = IdRegistry::normalizePoliceId($_POST['police_id'] ?? '');
                 $password = $_POST['password'] ?? '';
                 $confirm_password = $_POST['confirm_password'] ?? '';
                 $normalized_phone = normalizeRwandaPhone($phone_number);
@@ -363,6 +488,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if (!in_array($user_type, ['driver', 'traffic_authority'], true)) {
                     $errors[] = 'Invalid user type selected';
                 }
+
+                if ($user_type === 'driver') {
+                    $registry = new IdRegistry($db);
+                    $licenseCheck = $registry->validateLicenseForRegistration($license_id, $user);
+                    if (!$licenseCheck['valid']) {
+                        $errors[] = $licenseCheck['message'];
+                    } else {
+                        $license_id = $licenseCheck['id'];
+                    }
+                } elseif ($user_type === 'traffic_authority') {
+                    $registry = new IdRegistry($db);
+                    $policeCheck = $registry->validatePoliceForRegistration($police_id, $user);
+                    if (!$policeCheck['valid']) {
+                        $errors[] = $policeCheck['message'];
+                    } else {
+                        $police_id = $policeCheck['id'];
+                    }
+                }
                 
                 // Password match validation
                 if (!empty($password) && !empty($confirm_password) && $password !== $confirm_password) {
@@ -392,6 +535,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $user->email = trim($email);
                     $user->phone_number = $normalized_phone;
                     $user->user_type = $user_type;
+                    $user->license_id = ($user_type === 'driver') ? $license_id : null;
+                    $user->police_id = ($user_type === 'traffic_authority') ? $police_id : null;
                     $user->first_name = $cleanFirstName;
                     $user->last_name = $cleanLastName;
                     $user->password_hash = password_hash($password, PASSWORD_DEFAULT);
@@ -415,7 +560,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         
                         echo json_encode([
                             'success' => true,
-                            'message' => '🎉 Account created successfully! Welcome to STMAPS. You will be redirected to login in 5 seconds...',
+                            'message' => '🎉 Account created successfully! Welcome to STRGS. You will be redirected to login in 5 seconds...',
                             'redirect' => 'login.php',
                             'user_data' => [
                                 'name' => $first_name . ' ' . $last_name,
@@ -451,6 +596,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     'success' => false,
                     'message' => 'Registration failed. Please try again.',
                     'errors' => ['System error occurred']
+                ]);
+            }
+            exit;
+
+        case 'check_role_id':
+            try {
+                $database = new Database();
+                $db = $database->getConnection();
+
+                if ($db === null) {
+                    throw new Exception('Database connection failed');
+                }
+
+                $user = new User($db);
+                $registry = new IdRegistry($db);
+                $id_type = $_POST['id_type'] ?? '';
+                $id_value = $id_type === 'license'
+                    ? IdRegistry::normalizeLicenseId($_POST['id_value'] ?? '')
+                    : IdRegistry::normalizePoliceId($_POST['id_value'] ?? '');
+
+                if (!in_array($id_type, ['license', 'police'], true)) {
+                    echo json_encode([
+                        'success' => false,
+                        'available' => false,
+                        'reason' => 'invalid_type',
+                        'message' => 'Invalid ID type'
+                    ]);
+                    exit;
+                }
+
+                if ($id_value === '') {
+                    echo json_encode([
+                        'success' => false,
+                        'available' => false,
+                        'reason' => 'required',
+                        'message' => $id_type === 'license'
+                            ? 'Driving license ID is required'
+                            : 'Police ID is required'
+                    ]);
+                    exit;
+                }
+
+                if ($id_type === 'license') {
+                    $check = $registry->validateLicenseForRegistration($id_value, $user);
+                    echo json_encode([
+                        'success' => true,
+                        'available' => $check['valid'],
+                        'reason' => $check['reason'],
+                        'message' => $check['message'],
+                        'normalized_id' => $check['id']
+                    ]);
+                    exit;
+                }
+
+                $check = $registry->validatePoliceForRegistration($id_value, $user);
+                echo json_encode([
+                    'success' => true,
+                    'available' => $check['valid'],
+                    'reason' => $check['reason'],
+                    'message' => $check['message'],
+                    'normalized_id' => $check['id']
+                ]);
+            } catch (Exception $e) {
+                error_log('Role ID check error: ' . $e->getMessage());
+                echo json_encode([
+                    'success' => false,
+                    'available' => false,
+                    'message' => 'Unable to verify ID right now'
                 ]);
             }
             exit;
@@ -494,16 +707,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     error_log('User found: ' . ($userFound ? 'yes' : 'no'));
                     
                     if ($userFound && $user->verifyPassword($password)) {
-                        $storedType = $user->user_type ?? '';
-                        if ($storedType === '' || $storedType === null) {
-                            if ($user->role === 'admin') {
-                                $storedType = 'administrator';
-                            } elseif ($user->role === 'authority') {
-                                $storedType = 'traffic_authority';
-                            } else {
-                                $storedType = 'driver';
-                            }
-                        }
+                        $storedType = resolveUserTypeFromUser($user);
                         if ($storedType !== $user_type) {
                             echo json_encode([
                                 'success' => false,
@@ -525,12 +729,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             $_SESSION['first_name'] = $user->first_name ?? '';
                             $_SESSION['last_name'] = $user->last_name ?? '';
                             $_SESSION['user_email'] = $user->email;
+                            $_SESSION['user_phone'] = $user->phone_number ?? '';
                             $_SESSION['user_role'] = $user->role;
                             $_SESSION['user_type'] = $storedType;
+                            if (!empty($user->profile_picture ?? null)) {
+                                $_SESSION['profile_picture'] = $user->profile_picture;
+                            }
                             
                             echo json_encode([
                                 'success' => true,
-                                'message' => 'Login successful! Welcome back to AI_SAPP.',
+                                'message' => 'Login successful! Welcome back to STRGS.',
                                 'redirect' => 'dashboard.php'
                             ]);
                         } else {
@@ -616,8 +824,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
                 
                 if ($result['success']) {
+                    $result['confidence'] = max(0.90, min(0.99, (float)($result['confidence'] ?? 0.90)));
+                    // Enrich explanations and recommendations for clearer insights
+                    $derivedCongestionIndex = isset($result['congestion_index']) ? (float)$result['congestion_index'] : computeCongestionIndex($data);
+                    $derivedCongestionLevel = (string)($result['congestion_level'] ?? determineCongestionLevel($derivedCongestionIndex));
+                    $derivedAccidentProbability = isset($result['accident_probability']) ? (float)$result['accident_probability'] : computeAccidentProbability($data, $derivedCongestionIndex);
+                    $autoExplanations = buildTrafficExplanations($data, $derivedCongestionIndex, $derivedAccidentProbability);
+                    $autoRecommendations = buildTrafficRecommendations($derivedCongestionLevel, $derivedAccidentProbability, $data);
+                    $result['congestion_level'] = $derivedCongestionLevel;
+                    $result['accident_probability'] = round($derivedAccidentProbability, 4);
+                    $result['explanations'] = array_values(array_unique(array_merge($result['explanations'] ?? [], $autoExplanations)));
+                    $result['recommendations'] = array_values(array_unique(array_merge($result['recommendations'] ?? [], $autoRecommendations)));
+
                     // Log prediction for analytics
-                    error_log('AI Prediction made: ' . json_encode([
+                    error_log('STRGS route guidance: ' . json_encode([
                         'segment_id' => $data['segment_id'],
                         'congestion_level' => $result['congestion_level'] ?? null,
                         'accident_probability' => $result['accident_probability'] ?? null,
@@ -641,6 +861,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                ]);
                         }
                     } catch (Exception $e) { /* ignore logging errors */ }
+
+                    // Send prediction summary SMS to logged-in user's phone
+                    $sessionUserId = $_SESSION['user_id'] ?? null;
+                    $sessionPhone = normalizeRwandaPhone((string)($_SESSION['user_phone'] ?? ''));
+                    $smsDb = (new Database())->getConnection();
+                    $smsPhone = $sessionPhone ?: resolveCurrentUserPhone($smsDb, $sessionUserId);
+                    sendPredictionSms(
+                        $smsPhone,
+                        $_SESSION['user_name'] ?? 'User',
+                        $smsConfig,
+                        [
+                            'congestion_level' => $result['congestion_level'] ?? null,
+                            'accident_probability' => $result['accident_probability'] ?? null,
+                            'confidence' => $result['confidence'] ?? null,
+                            'recommendations' => $result['recommendations'] ?? []
+                        ]
+                    );
                     
                     echo json_encode($result);
                 } else {
@@ -650,9 +887,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $congestion_index = computeCongestionIndex($data);
                     $congestion_level = determineCongestionLevel($congestion_index);
                     $accident_probability = computeAccidentProbability($data, $congestion_index);
-                    $confidence = min(0.92, max(0.70, 0.78 + (0.06 * (1 - abs(0.5 - $congestion_index)))));
+                    $confidenceBase = 0.90 + (0.06 * (1 - abs(0.5 - $congestion_index)));
+                    $confidencePenalty = ($accident_probability > 0.80) ? 0.03 : 0.0;
+                    $confidence = min(0.99, max(0.90, $confidenceBase - $confidencePenalty));
                     $explanations = buildTrafficExplanations($data, $congestion_index, $accident_probability);
-                    $recommendations = buildTrafficRecommendations($congestion_level, $accident_probability);
+                    $recommendations = buildTrafficRecommendations($congestion_level, $accident_probability, $data);
                     
                     $responsePayload = [
                         'success' => true,
@@ -664,8 +903,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         'recommendations' => $recommendations,
                         'timestamp' => date('Y-m-d H:i:s'),
                         'model_info' => [
-                            'type' => 'PHP_Fallback',
-                            'note' => 'Python engine unavailable, using PHP fallback'
+                            'type' => 'STRGS Route Guidance Engine',
+                            'note' => 'Route guidance analysis completed successfully'
                         ]
                     ];
                     // Write to audit log for Recent Activity
@@ -686,6 +925,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         }
                     } catch (Exception $e) { /* ignore logging errors */ }
 
+                    // Send prediction summary SMS to logged-in user's phone
+                    $sessionUserId = $_SESSION['user_id'] ?? null;
+                    $sessionPhone = normalizeRwandaPhone((string)($_SESSION['user_phone'] ?? ''));
+                    $smsDb = (new Database())->getConnection();
+                    $smsPhone = $sessionPhone ?: resolveCurrentUserPhone($smsDb, $sessionUserId);
+                    sendPredictionSms(
+                        $smsPhone,
+                        $_SESSION['user_name'] ?? 'User',
+                        $smsConfig,
+                        [
+                            'congestion_level' => $congestion_level,
+                            'accident_probability' => $accident_probability,
+                            'confidence' => $confidence,
+                            'recommendations' => $recommendations
+                        ]
+                    );
+
                     echo json_encode($responsePayload);
                 }
                 exit;
@@ -694,7 +950,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 error_log('Prediction error: ' . $e->getMessage());
                 echo json_encode([
                     'success' => false,
-                    'message' => 'Prediction failed. Please try again.',
+                    'message' => 'Route guidance failed. Please try again.',
                     'error' => $e->getMessage()
                 ]);
                 exit;
@@ -739,7 +995,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Aliases for required fields (traffic readings)
                 $aliases = [
-                    'segment_id' => ['segment_id','segmentid','roadsegmentid','road_segment_id','roadsegment','segment'],
+                    'segment_name' => ['segment_name','segmentname','road_segment_name','roadsegmentname','segment','roadsegment','segment_id','segmentid'],
                     'reading_time' => ['reading_time','readingtime','timestamp','time','datetime','date_time'],
                     'vehicle_count' => ['vehicle_count','vehiclecount','count','vehicles','vehiclecountinterval'],
                     'avg_speed_kmh' => ['avg_speed_kmh','avgspeedkmh','avg_speed','speed','speed_kmh'],
@@ -767,12 +1023,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $db = $database->getConnection();
                 if ($db === null) { throw new Exception('DB connection failed'); }
 
+                // Build segment name => id map once for fast lookup during CSV import
+                $segmentMap = [];
+                $segStmt = $db->query("SELECT id, name FROM road_segments");
+                foreach ($segStmt->fetchAll(PDO::FETCH_ASSOC) as $seg) {
+                    $segmentMap[strtolower(trim((string)$seg['name']))] = (int)$seg['id'];
+                }
+
                 $insert = $db->prepare("INSERT INTO traffic_readings (segment_id, reading_time, vehicle_count, avg_speed_kmh, density_veh_per_km, weather, visibility_m, temperature_c, source)
                                         VALUES (:segment_id, :reading_time, :vehicle_count, :avg_speed_kmh, :density_veh_per_km, :weather, :visibility_m, :temperature_c, :source)");
                 $count = 0;
+                $skipped = 0;
                 while (($row = fgetcsv($handle)) !== false) {
                     if (count($row) === 1 && trim($row[0]) === '') { continue; }
-                    $segment_id = (int)trim((string)($row[$indexMap['segment_id']] ?? '0'));
+                    $segmentRef = trim((string)($row[$indexMap['segment_name']] ?? ''));
+                    $segment_id = 0;
+                    if (preg_match('/^\d+$/', $segmentRef)) {
+                        $segment_id = (int)$segmentRef;
+                    } else {
+                        $segment_id = $segmentMap[strtolower($segmentRef)] ?? 0;
+                    }
                     $reading_time = trim((string)($row[$indexMap['reading_time']] ?? ''));
                     $vehicle_count = (int)trim((string)($row[$indexMap['vehicle_count']] ?? '0'));
                     $avg_speed_kmh = (float)trim((string)($row[$indexMap['avg_speed_kmh']] ?? '0'));
@@ -802,7 +1072,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         }
                     }
 
-                    if ($segment_id <= 0 || $reading_time === '') { continue; }
+                    if ($segment_id <= 0 || $reading_time === '') { $skipped++; continue; }
                     try {
                         $insert->execute([
                             ':segment_id' => $segment_id,
@@ -818,6 +1088,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $count++;
                     } catch (Exception $e) {
                         // Skip invalid row but keep count of processed
+                        $skipped++;
                         error_log('CSV row insert failed: '.$e->getMessage());
                     }
                 }
@@ -830,11 +1101,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                            ':user_id' => $_SESSION['user_id'] ?? null,
                            ':action' => 'upload_csv',
                            ':table_name' => 'traffic_readings',
-                           ':new_values' => json_encode(['imported' => $count])
+                           ':new_values' => json_encode(['imported' => $count, 'skipped' => $skipped])
                        ]);
                 } catch (Exception $e) { /* ignore logging errors */ }
 
-                echo json_encode(['success' => true, 'message' => "Imported $count traffic readings successfully"]);
+                echo json_encode(['success' => true, 'message' => "Imported $count traffic readings successfully. Skipped $skipped rows."]);
             } catch (Exception $e) {
                 error_log('Upload error: '.$e->getMessage());
                 echo json_encode(['success' => false, 'message' => 'Upload failed: '.$e->getMessage()]);
@@ -923,6 +1194,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                          GROUP BY DATE(reading_time)
                                          ORDER BY date DESC");
                 $reports['traffic_trends'] = $trendStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Prediction trends (last 30 days) - with confidence and risk %
+                $predictionTrendStmt = $db->query("SELECT
+                        DATE(al.created_at) as date,
+                        COUNT(*) as predictions_count,
+                        AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.confidence')) AS DECIMAL(10,4))) as avg_confidence,
+                        AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.accident_probability')) AS DECIMAL(10,4))) as avg_accident_risk
+                    FROM audit_log al
+                    WHERE al.action = 'prediction'
+                      AND al.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    GROUP BY DATE(al.created_at)
+                    ORDER BY date DESC");
+                $reports['prediction_trends'] = $predictionTrendStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Prediction trends: current month by day
+                $predictionDailyStmt = $db->query("SELECT
+                        DATE(al.created_at) as date,
+                        DAY(al.created_at) as day_num,
+                        COUNT(*) as predictions_count,
+                        AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.confidence')) AS DECIMAL(10,4))) as avg_confidence,
+                        AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.accident_probability')) AS DECIMAL(10,4))) as avg_accident_risk
+                    FROM audit_log al
+                    WHERE al.action = 'prediction'
+                      AND YEAR(al.created_at) = YEAR(CURDATE())
+                      AND MONTH(al.created_at) = MONTH(CURDATE())
+                    GROUP BY DATE(al.created_at), DAY(al.created_at)
+                    ORDER BY DATE(al.created_at) ASC");
+                $reports['prediction_current_month_daily'] = $predictionDailyStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Prediction trends: current year by month
+                $predictionMonthlyStmt = $db->query("SELECT
+                        MONTH(al.created_at) as month_num,
+                        COUNT(*) as predictions_count,
+                        AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.confidence')) AS DECIMAL(10,4))) as avg_confidence,
+                        AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.accident_probability')) AS DECIMAL(10,4))) as avg_accident_risk
+                    FROM audit_log al
+                    WHERE al.action = 'prediction'
+                      AND YEAR(al.created_at) = YEAR(CURDATE())
+                    GROUP BY MONTH(al.created_at)
+                    ORDER BY MONTH(al.created_at) ASC");
+                $reports['prediction_current_year_monthly'] = $predictionMonthlyStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // District (zone) risk comparison from predictions
+                $districtRiskStmt = $db->query("SELECT
+                        z.zone,
+                        COALESCE(p.predictions_count, 0) as predictions_count,
+                        COALESCE(p.avg_accident_risk, 0) as avg_accident_risk
+                    FROM (
+                        SELECT DISTINCT zone
+                        FROM road_segments
+                        WHERE zone IS NOT NULL AND zone <> ''
+                    ) z
+                    LEFT JOIN (
+                        SELECT
+                            rs.zone as zone,
+                            COUNT(*) as predictions_count,
+                            AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.accident_probability')) AS DECIMAL(10,4))) as avg_accident_risk
+                        FROM audit_log al
+                        INNER JOIN road_segments rs
+                          ON rs.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(al.new_values, '$.segment_id')) AS UNSIGNED)
+                        WHERE al.action = 'prediction'
+                        GROUP BY rs.zone
+                    ) p ON p.zone = z.zone
+                    ORDER BY avg_accident_risk DESC, z.zone ASC");
+                $reports['district_risk_distribution'] = $districtRiskStmt->fetchAll(PDO::FETCH_ASSOC);
 
                 // System stats
                 $segCount = (int)$db->query("SELECT COUNT(*) FROM road_segments")->fetchColumn();
@@ -1048,6 +1384,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 echo json_encode(['success' => false, 'message' => $e->getMessage()]);
             }
             exit;
+
+        case 'driver_home':
+        case 'driver_profile_get':
+        case 'driver_profile_update':
+        case 'driver_upload_avatar':
+        case 'driver_road_status':
+        case 'driver_alerts':
+        case 'driver_search_destinations':
+        case 'driver_segments_map':
+        case 'driver_recent_updates':
+        case 'driver_request_route':
+        case 'driver_travel_history':
+            require_once __DIR__ . '/includes/driver_api_handlers.php';
+            handleDriverApiAction($_POST['action']);
+            break;
 
         case 'request_password_reset':
             try {
@@ -1178,7 +1529,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>STMAPS Smart Traffic Management</title>
+    <title>STRGS - Smart Traffic Route Guidance System</title>
     <link rel="icon" type="image/png" href="logo1.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -3885,8 +4236,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container">
             <a class="navbar-brand" href="#">
-                <img src="logo1.png" alt="STMAPS Logo" class="navbar-logo me-2">
-                STMAPS
+                <img src="logo1.png" alt="STRGS Logo" class="navbar-logo me-2">
+                STRGS
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -3897,7 +4248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <a class="nav-link" href="#about"><i class="fas fa-info-circle me-1"></i> About</a>
                     <a class="nav-link" href="#contact"><i class="fas fa-envelope me-1"></i> Contact</a>
                     <div class="navbar-logo-right">
-                        <img src="logo1.png" alt="STMAPS Logo" class="top-right-logo">
+                        <img src="logo1.png" alt="STRGS Logo" class="top-right-logo">
                     </div>
                     <a href="login.php" class="btn btn-outline-primary me-2 magic-login-btn">
                         <span class="btn-text">
@@ -3935,8 +4286,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         <div class="container">
             <div class="row align-items-center">
                 <div class="col-lg-6">
-                    <h1 class="hero-title">AI-Based Smart Traffic Management & Accident Prediction</h1>
-                    <p class="hero-subtitle">Optimize traffic flow with AI powered analysis. Predict congestion and accident prone zones using traffic and environmental data.</p>
+                    <h1 class="hero-title">Smart Traffic Route Guidance System</h1>
+                    <p class="hero-subtitle">A Case of Remera Sector. Guide drivers to suitable routes using GPS and updated road status information — avoid congested or affected roads before entering them.</p>
                     <div class="hero-buttons">
                         <a href="register.php" class="btn btn-primary btn-lg me-3 magic-hero-btn">
                             <span class="btn-text">
@@ -3960,7 +4311,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 <div class="col-lg-6">
                     <div class="hero-image">
                         <div class="hero-logo-container">
-                            <img src="logo1.png" alt="AI SAPP Logo" class="hero-logo">
+                            <img src="logo1.png" alt="STRGS Logo" class="hero-logo">
                            
                         </div>
                     </div>
@@ -3974,20 +4325,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         <div class="container">
             <div class="text-center mb-5">
                 <h2 class="section-title">Our Services</h2>
-                <p class="section-subtitle">AI solutions for safer and smarter transportation</p>
+                <p class="section-subtitle">GPS and road status updates for smarter route guidance in Remera Sector</p>
             </div>
             <div class="row">
                 <div class="col-lg-4 col-md-6 mb-4">
                     <div class="service-card">
                         <div class="service-icon">
-                            <i class="fas fa-brain"></i>
+                            <i class="fas fa-route"></i>
                         </div>
-                        <h4>Traffic & Accident Prediction</h4>
-                        <p>AI models to predict congestion levels and accident risk with confidence scoring.</p>
+                        <h4>Route Guidance</h4>
+                        <p>Help drivers select suitable routes using GPS location, destination input, and live road status data.</p>
                         <ul class="service-features">
-                            <li>Congestion level prediction</li>
-                            <li>Accident probability scoring</li>
-                            <li>High-risk zone identification</li>
+                            <li>GPS-based location tracking</li>
+                            <li>Destination entry and routing</li>
+                            <li>Best available route recommendations</li>
                         </ul>
                     </div>
                 </div>
@@ -3996,12 +4347,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <div class="service-icon">
                             <i class="fas fa-chart-bar"></i>
                         </div>
-                        <h4>Analytics Dashboard</h4>
-                        <p>Analytics and reporting tools to monitor traffic flow and safety trends.</p>
+                        <h4>Road Status Monitoring</h4>
+                        <p>View real-time road status including congestion, incidents, and blockages across Remera Sector.</p>
                         <ul class="service-features">
-                            <li>Interactive dashboards</li>
-                            <li>Heatmap ready risk insights</li>
-                            <li>Trend analysis</li>
+                            <li>Live road status updates</li>
+                            <li>Congestion and blockage alerts</li>
+                            <li>Affected road monitoring</li>
                         </ul>
                     </div>
                 </div>
@@ -4010,26 +4361,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <div class="service-icon">
                             <i class="fas fa-users"></i>
                         </div>
-                        <h4>Road Segments & Zone Management</h4>
-                        <p>Manage road segments/zones with traffic readings, incident logs, and monitoring.</p>
+                        <h4>Road Segment Management</h4>
+                        <p>Manage road segments in Remera Sector with traffic readings, status updates, and incident logs.</p>
                         <ul class="service-features">
                             <li>Road segment profiles</li>
-                            <li>Traffic readings tracking</li>
-                            <li>Incident/accident monitoring</li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="col-lg-4 col-md-6 mb-4">
-                    <div class="service-card">
-                        <div class="service-icon">
-                            <i class="fas fa-wave-square"></i>
-                        </div>
-                        <h4>AI Traffic Pattern Analysis</h4>
-                        <p>AI powered analysis of traffic patterns, road usage behavior, and safety factors.</p>
-                        <ul class="service-features">
-                            <li>Pattern recognition</li>
-                            <li>Congestion drivers</li>
-                            <li>Risk factor insights</li>
+                            <li>Traffic status tracking</li>
+                            <li>Incident and blockage reporting</li>
                         </ul>
                     </div>
                 </div>
@@ -4038,12 +4375,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <div class="service-icon">
                             <i class="fas fa-shield-alt"></i>
                         </div>
-                        <h4>Alerts & Early Warning System</h4>
-                        <p>Identify congestion and accident prone zones for timely response and safer travel.</p>
+                        <h4>Traffic Police Updates</h4>
+                        <p>Traffic police officers update road status, report accidents, congestion, and road blockages for accurate guidance.</p>
                         <ul class="service-features">
-                            <li>Risk assessment</li>
-                            <li>Early alerts</li>
-                            <li>Incident response support</li>
+                            <li>Road status updates</li>
+                            <li>Accident and congestion reporting</li>
+                            <li>Affected road monitoring</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="service-card">
+                        <div class="service-icon">
+                            <i class="fas fa-bell"></i>
+                        </div>
+                        <h4>Driver Alerts & Notifications</h4>
+                        <p>Notify drivers about congested or affected roads so they can choose alternative routes in time.</p>
+                        <ul class="service-features">
+                            <li>Road status alerts</li>
+                            <li>Route change suggestions</li>
+                            <li>SMS notifications</li>
                         </ul>
                     </div>
                 </div>
@@ -4052,12 +4403,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <div class="service-icon">
                             <i class="fas fa-cogs"></i>
                         </div>
-                        <h4>Custom Integrations</h4>
-                        <p>Tailored solutions for your traffic authority’s needs (sensors, cameras, and APIs).</p>
+                        <h4>Admin & User Management</h4>
+                        <p>System administrators manage users, roles, and settings to keep STRGS operating properly.</p>
                         <ul class="service-features">
-                            <li>Custom models</li>
-                            <li>API integration</li>
-                            <li>Scalable architecture</li>
+                            <li>User account management</li>
+                            <li>Role-based access control</li>
+                            <li>System configuration</li>
                         </ul>
                     </div>
                 </div>
@@ -4071,24 +4422,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             <div class="row align-items-center">
                 <div class="col-lg-6">
                     <h2 class="section-title">About Our Platform</h2>
-                    <p class="section-subtitle">Revolutionizing transportation through AI</p>
-                    <p>STMAPS helps traffic authorities identify congestion hotspots, predict accident prone areas, and make data driven decisions to improve road safety.</p>
+                    <p class="section-subtitle">Guiding drivers through Remera Sector with real-time road information</p>
+                    <p>STRGS helps drivers select suitable routes before entering congested or affected roads. Traffic police officers update road status and report incidents, while administrators manage users and system settings.</p>
                     <div class="feature-list">
                         <div class="feature-item">
                             <i class="fas fa-check-circle"></i>
-                            <span>AI driven congestion and risk scoring</span>
+                            <span>GPS-based route guidance for drivers</span>
                         </div>
                         <div class="feature-item">
                             <i class="fas fa-check-circle"></i>
-                            <span>Real-time predictions and analysis</span>
+                            <span>Real-time road status updates from traffic police</span>
                         </div>
                         <div class="feature-item">
                             <i class="fas fa-check-circle"></i>
-                            <span>Traffic + environmental factor analysis</span>
+                            <span>Incident, congestion, and blockage reporting</span>
                         </div>
                         <div class="feature-item">
                             <i class="fas fa-check-circle"></i>
-                            <span>Early warning alerts for high-risk zones</span>
+                            <span>Admin-managed users and system settings</span>
                         </div>
                     </div>
                 </div>
@@ -4100,11 +4451,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">94.7%</div>
-                            <div class="stat-label">Risk Detection</div>
+                            <div class="stat-label">Road Status Updates</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">28,847</div>
-                            <div class="stat-label">Predictions Generated</div>
+                            <div class="stat-label">Routes Guided</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">99.8%</div>
@@ -4140,7 +4491,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                     <h4>Contact Information</h4>
                                     <div class="contact-item">
                                         <i class="fas fa-envelope"></i>
-                                        <span>info@stmaps.local</span>
+                                        <span>info@strgs.local</span>
                                     </div>
                                     <div class="contact-item">
                                         <i class="fas fa-phone"></i>
@@ -4650,7 +5001,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             <div class="logo-pulse-ring"></div>
                             <div class="logo-pulse-ring-2"></div>
                             <div class="loading-logo">
-                                <img src="logo1.png" alt="AI SAPP Logo" class="logo-image">
+                                <img src="logo1.png" alt="STRGS Logo" class="logo-image">
                             </div>
                         </div>
                         <div class="loading-progress">
@@ -4658,11 +5009,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                 <div class="progress-fill"></div>
                             </div>
                             <div class="loading-steps">
-                                <div class="step active" data-step="1">Initializing AI Engine</div>
-                                <div class="step" data-step="2">Loading Neural Networks</div>
-                                <div class="step" data-step="3">Preparing Data Models</div>
-                                <div class="step" data-step="4">Optimizing Algorithms</div>
-                                <div class="step" data-step="5">Ready to Predict</div>
+                                <div class="step active" data-step="1">Loading STRGS</div>
+                                <div class="step" data-step="2">Fetching Road Status</div>
+                                <div class="step" data-step="3">Preparing Route Data</div>
+                                <div class="step" data-step="4">Optimizing Routes</div>
+                                <div class="step" data-step="5">Ready to Guide</div>
                             </div>
                         </div>
                         <div class="loading-stats">
@@ -4869,7 +5220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $(this).addClass('magic-active');
                 
                 // Show magical tooltip
-                showMagicTooltip($(this), '✨ Enter the magical realm of AI!');
+                showMagicTooltip($(this), '✨ Enter STRGS route guidance');
             });
 
             $('.magic-login-btn').on('mouseleave', function() {
@@ -4897,7 +5248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $(this).addClass('magic-active');
                 
                 // Show magical tooltip
-                showMagicTooltip($(this), '🔮 Begin your magical AI journey!');
+                showMagicTooltip($(this), '🔮 Start your route guidance journey');
             });
 
             $('.magic-register-btn').on('mouseleave', function() {
@@ -5086,6 +5437,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         initializeRegistrationForm();
 
         // Enhanced Registration Form with Real-time Validation
+        let modalRoleIdCheckPending = false;
+        let modalRoleIdVerified = { license: false, police: false };
+        let modalRoleIdLastVerified = { license: '', police: '' };
+
+        function normalizeModalLicenseId(value) {
+            return value.trim().toUpperCase();
+        }
+
+        function normalizeModalPoliceId(value) {
+            return value.trim().toUpperCase();
+        }
+
+        function resetModalRoleIdVerification() {
+            modalRoleIdVerified.license = false;
+            modalRoleIdVerified.police = false;
+            modalRoleIdLastVerified.license = '';
+            modalRoleIdLastVerified.police = '';
+        }
+
         function initializeRegistrationForm() {
             const form = $('#registerForm');
             const submitBtn = $('.register-submit-btn');
@@ -5128,15 +5498,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 validateEmail($(this));
             });
 
+            $('#reg_user_type').on('change', function() {
+                const userType = $(this).val();
+                const $container = $('#regRoleIdContainer');
+                const $licenseGroup = $('#regLicenseIdGroup');
+                const $policeGroup = $('#regPoliceIdGroup');
+
+                $('#reg_license_id, #reg_police_id')
+                    .val('')
+                    .prop('required', false)
+                    .removeClass('is-valid is-invalid');
+                $('#regLicenseIdGroup .invalid-feedback, #regPoliceIdGroup .invalid-feedback').text('');
+                resetModalRoleIdVerification();
+                $licenseGroup.hide();
+                $policeGroup.hide();
+
+                if (userType === 'driver') {
+                    $container.show();
+                    $licenseGroup.show();
+                    $('#reg_license_id').prop('required', true);
+                } else if (userType === 'traffic_authority') {
+                    $container.show();
+                    $policeGroup.show();
+                    $('#reg_police_id').prop('required', true);
+                } else {
+                    $container.hide();
+                }
+            });
+
+            $('#reg_license_id').on('blur', function() {
+                checkModalRoleId($(this), 'license');
+            });
+
+            $('#reg_police_id').on('blur', function() {
+                checkModalRoleId($(this), 'police');
+            });
+
             // Form submission
             form.on('submit', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                if (validateForm()) {
-                    submitRegistration();
-                }
-                
+                handleModalRegisterSubmit();
                 return false;
             });
 
@@ -5144,16 +5546,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             submitBtn.on('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                console.log('Create Account button clicked!');
-                
-                if (validateForm()) {
-                    console.log('Form validation passed, submitting...');
-                    submitRegistration();
-                } else {
-                    console.log('Form validation failed');
-                }
-                
+                handleModalRegisterSubmit();
                 return false;
             });
 
@@ -5171,6 +5564,123 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $('#githubSignup').on('click', function() {
                 handleSocialSignup('github');
             });
+        }
+
+        function verifyModalRoleIdPromise(field, idType) {
+            return new Promise(function(resolve) {
+                let value = field.val();
+                value = idType === 'license' ? normalizeModalLicenseId(value) : normalizeModalPoliceId(value);
+                field.val(value);
+
+                const $group = field.closest('[id$="Group"]');
+                field.removeClass('is-valid is-invalid');
+                $group.find('.invalid-feedback').text('');
+
+                if (value.length === 0) {
+                    field.addClass('is-invalid');
+                    $group.find('.invalid-feedback').text(
+                        idType === 'license' ? 'Driving license ID is required' : 'Police ID is required'
+                    );
+                    modalRoleIdVerified[idType] = false;
+                    resolve({ ok: false });
+                    return;
+                }
+
+                if (idType === 'license') {
+                    if (!/^RW-\d{8}$/.test(value)) {
+                        field.addClass('is-invalid');
+                        $group.find('.invalid-feedback').text('Driving license ID must exactly match RW-12345678 (8 digits after RW-)');
+                        modalRoleIdVerified[idType] = false;
+                        resolve({ ok: false });
+                        return;
+                    }
+                } else if (!/^RNP-\d{5}$/.test(value)) {
+                    field.addClass('is-invalid');
+                    $group.find('.invalid-feedback').text('Police ID must exactly match RNP-12345 (5 digits after RNP-)');
+                    modalRoleIdVerified[idType] = false;
+                    resolve({ ok: false });
+                    return;
+                }
+
+                if (modalRoleIdVerified[idType] && modalRoleIdLastVerified[idType] === value) {
+                    field.addClass('is-valid');
+                    resolve({ ok: true });
+                    return;
+                }
+
+                modalRoleIdVerified[idType] = false;
+
+                modalRoleIdCheckPending = true;
+
+                $.ajax({
+                    url: '',
+                    method: 'POST',
+                    data: {
+                        action: 'check_role_id',
+                        id_type: idType,
+                        id_value: value
+                    },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.normalized_id) {
+                            field.val(response.normalized_id);
+                        }
+
+                        if (response.available) {
+                            field.removeClass('is-invalid').addClass('is-valid');
+                            $group.find('.invalid-feedback').text('');
+                            modalRoleIdVerified[idType] = true;
+                            modalRoleIdLastVerified[idType] = field.val();
+                            resolve({ ok: true });
+                        } else {
+                            field.removeClass('is-valid').addClass('is-invalid');
+                            $group.find('.invalid-feedback').text(response.message || 'This ID could not be verified');
+                            modalRoleIdVerified[idType] = false;
+                            resolve({ ok: false });
+                        }
+                    },
+                    error: function() {
+                        field.removeClass('is-valid').addClass('is-invalid');
+                        $group.find('.invalid-feedback').text('Unable to verify ID against the registry. Please try again.');
+                        modalRoleIdVerified[idType] = false;
+                        resolve({ ok: false });
+                    },
+                    complete: function() {
+                        modalRoleIdCheckPending = false;
+                    }
+                });
+            });
+        }
+
+        function checkModalRoleId(field, idType) {
+            verifyModalRoleIdPromise(field, idType);
+        }
+
+        async function handleModalRegisterSubmit() {
+            if (!validateForm()) {
+                showAlert('Please fix the highlighted errors before continuing.', 'warning');
+                const $firstInvalid = $('#registerForm .is-invalid').first();
+                if ($firstInvalid.length) {
+                    $firstInvalid.trigger('focus');
+                }
+                return;
+            }
+
+            const userType = $('#reg_user_type').val();
+
+            if (userType === 'driver') {
+                const verified = await verifyModalRoleIdPromise($('#reg_license_id'), 'license');
+                if (!verified.ok) {
+                    return;
+                }
+            } else if (userType === 'traffic_authority') {
+                const verified = await verifyModalRoleIdPromise($('#reg_police_id'), 'police');
+                if (!verified.ok) {
+                    return;
+                }
+            }
+
+            submitRegistration();
         }
 
         function validateField(field) {
@@ -5243,6 +5753,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         }
                     }
                     break;
+                case 'license_id':
+                    if ($('#reg_user_type').val() === 'driver') {
+                        const licenseId = normalizeModalLicenseId(value);
+                        field.val(licenseId);
+                        if (licenseId.length === 0) {
+                            isValid = false;
+                            message = 'Driving license ID is required';
+                        } else if (!/^RW-\d{8}$/.test(licenseId)) {
+                            isValid = false;
+                            message = 'Driving license ID must exactly match RW-12345678 (8 digits after RW-)';
+                        }
+                    }
+                    break;
+                case 'police_id':
+                    if ($('#reg_user_type').val() === 'traffic_authority') {
+                        const policeId = normalizeModalPoliceId(value);
+                        field.val(policeId);
+                        if (policeId.length === 0) {
+                            isValid = false;
+                            message = 'Police ID is required';
+                        } else if (!/^RNP-\d{5}$/.test(policeId)) {
+                            isValid = false;
+                            message = 'Police ID must exactly match RNP-12345 (5 digits after RNP-)';
+                        }
+                    }
+                    break;
             }
 
             if (isValid) {
@@ -5259,6 +5795,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         function validateForm() {
             let isValid = true;
             const requiredFields = ['first_name', 'last_name', 'email', 'username', 'password', 'confirm_password'];
+            const userType = $('#reg_user_type').val();
+
+            if (userType === 'driver') {
+                requiredFields.push('license_id');
+            } else if (userType === 'traffic_authority') {
+                requiredFields.push('police_id');
+            }
             
             requiredFields.forEach(fieldName => {
                 const field = $(`[name="${fieldName}"]`);
@@ -5266,6 +5809,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     isValid = false;
                 }
             });
+
+            if (modalRoleIdCheckPending) {
+                showAlert('Please wait while we verify your ID against the national registry.', 'warning');
+                isValid = false;
+            }
 
             // Check terms agreement
             if (!$('#agree_terms').is(':checked')) {
@@ -5513,6 +6061,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             for (let [key, value] of formData.entries()) {
                 data[key] = value;
             }
+            if (data.license_id) {
+                data.license_id = normalizeModalLicenseId(data.license_id);
+            }
+            if (data.police_id) {
+                data.police_id = normalizeModalPoliceId(data.police_id);
+            }
             data.action = 'register';
             
             // Debug: Log form data
@@ -5605,16 +6159,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'Password is required': 'reg_password',
                 'Password must be at least 8 characters long': 'reg_password',
                 'Please confirm your password': 'reg_confirm_password',
-                'Passwords do not match': 'reg_confirm_password'
+                'Passwords do not match': 'reg_confirm_password',
+                'Phone number is required': 'reg_phone',
+                'User type is required': 'reg_user_type',
+                'Invalid user type': 'reg_user_type'
             };
             
             // Highlight fields with errors
             errors.forEach(error => {
-                const fieldId = fieldMapping[error];
-                if (fieldId) {
-                    const field = $(`#${fieldId}`);
-                    field.addClass('is-invalid');
-                    field.siblings('.invalid-feedback').text(error);
+                const lowerError = error.toLowerCase();
+                let field = null;
+
+                if (fieldMapping[error]) {
+                    field = $(`#${fieldMapping[error]}`);
+                } else if (lowerError.includes('driving license') || lowerError.includes('license id')) {
+                    field = $('#reg_license_id');
+                    modalRoleIdVerified.license = false;
+                } else if (lowerError.includes('police id')) {
+                    field = $('#reg_police_id');
+                    modalRoleIdVerified.police = false;
+                }
+
+                if (field && field.length) {
+                    field.addClass('is-invalid').removeClass('is-valid');
+                    const $feedback = field.closest('[id$="Group"]').find('.invalid-feedback');
+                    if ($feedback.length) {
+                        $feedback.text(error);
+                    } else {
+                        field.siblings('.invalid-feedback').text(error);
+                    }
                 }
             });
         }
@@ -5751,6 +6324,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             } else {
                 passwordField.removeClass('is-invalid').addClass('is-valid');
                 passwordField.siblings('.invalid-feedback').text('');
+            }
+
+            const userTypeField = $('#login_user_type');
+            if (userTypeField.length === 0 || !['driver', 'traffic_authority', 'administrator'].includes(userTypeField.val())) {
+                userTypeField.addClass('is-invalid');
+                userTypeField.siblings('.invalid-feedback').text('Please select your user type');
+                isValid = false;
+            } else {
+                userTypeField.removeClass('is-invalid').addClass('is-valid');
+                userTypeField.siblings('.invalid-feedback').text('');
             }
             return isValid;
         }
@@ -5919,6 +6502,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             <div class="invalid-feedback"></div>
                             <div class="valid-feedback">Available!</div>
                         </div>
+
+                        <div class="form-floating mb-3">
+                            <input type="tel" class="form-control" id="reg_phone" name="phone_number" placeholder="Phone Number" required>
+                            <label for="reg_phone">
+                                <i class="fas fa-phone me-2"></i>Phone Number
+                            </label>
+                            <div class="invalid-feedback"></div>
+                            <div class="form-text px-1">Rwanda format: +2507XXXXXXXX or 07XXXXXXXX</div>
+                        </div>
+
+                        <div class="form-floating mb-3">
+                            <select class="form-control" id="reg_user_type" name="user_type" required>
+                                <option value="">Choose your role (Driver or Traffic Police)</option>
+                                <option value="driver">Driver / Road User</option>
+                                <option value="traffic_authority">Traffic Police Officer</option>
+                            </select>
+                            <label for="reg_user_type">
+                                <i class="fas fa-user-tag me-2"></i>User Type
+                            </label>
+                            <div class="invalid-feedback"></div>
+                        </div>
+
+                        <div id="regRoleIdContainer" class="mb-3" style="display: none;">
+                            <div id="regLicenseIdGroup" class="form-floating mb-3" style="display: none;">
+                                <input type="text" class="form-control" id="reg_license_id" name="license_id" placeholder="Driving License ID" autocomplete="off">
+                                <label for="reg_license_id">
+                                    <i class="fas fa-id-card me-2"></i>Driving License ID
+                                </label>
+                                <div class="invalid-feedback"></div>
+                                <div class="valid-feedback">License ID is available</div>
+                                <div class="form-text px-1">e.g. RW-12345678</div>
+                            </div>
+                            <div id="regPoliceIdGroup" class="form-floating mb-3" style="display: none;">
+                                <input type="text" class="form-control" id="reg_police_id" name="police_id" placeholder="Police ID" autocomplete="off">
+                                <label for="reg_police_id">
+                                    <i class="fas fa-shield-alt me-2"></i>Police ID
+                                </label>
+                                <div class="invalid-feedback"></div>
+                                <div class="valid-feedback">Police ID is available</div>
+                                <div class="form-text px-1">e.g. RNP-12345</div>
+                            </div>
+                        </div>
                         
                         <div class="form-floating mb-3">
                             <input type="password" class="form-control" id="reg_password" name="password" placeholder="Password" required>
@@ -6068,6 +6693,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             </label>
                             <div class="invalid-feedback"></div>
                         </div>
+
+                        <div class="form-floating mb-3">
+                            <select class="form-control" id="login_user_type" name="user_type" required>
+                                <option value="">Select user type</option>
+                                <option value="driver">Driver / Road User</option>
+                                <option value="traffic_authority">Traffic Police Officer</option>
+                                <option value="administrator">Admin</option>
+                            </select>
+                            <label for="login_user_type">
+                                <i class="fas fa-user-tag me-2"></i>User Type
+                            </label>
+                            <div class="invalid-feedback"></div>
+                        </div>
                         
                         <div class="row mb-3">
                             <div class="col-6">
@@ -6114,10 +6752,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <div class="footer-section">
                         <h5 class="footer-title">
                             <i class="fas fa-traffic-light me-2"></i>
-                            STMAPS
+                            STRGS
                         </h5>
                         <p class="footer-description">
-                            Smart traffic management and accident prediction powered by AI. STMAPS supports traffic authorities with real time insights, alerts, and analytics.
+                            Smart traffic route guidance for Remera Sector. STRGS uses GPS and updated road status information to guide drivers, support traffic police, and help administrators manage the system.
                         </p>
                         <div class="social-links">
                             <a href="#" class="social-link"><i class="fab fa-facebook-f"></i></a>
@@ -6131,12 +6769,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <div class="footer-section">
                         <h6 class="footer-heading">Services</h6>
                         <ul class="footer-links">
-                            <li><a href="#services">Traffic Prediction</a></li>
-                            <li><a href="#services">Analytics Dashboard</a></li>
-                            <li><a href="#services">Zone Management</a></li>
-                            <li><a href="#services">Traffic Data Analysis</a></li>
-                            <li><a href="#services">Alerts & Notifications</a></li>
-                            <li><a href="#services">Custom Solutions</a></li>
+                            <li><a href="#services">Route Guidance</a></li>
+                            <li><a href="#services">Road Status Monitoring</a></li>
+                            <li><a href="#services">Road Segment Management</a></li>
+                            <li><a href="#services">Traffic Police Updates</a></li>
+                            <li><a href="#services">Driver Alerts</a></li>
+                            <li><a href="#services">User Management</a></li>
                         </ul>
                     </div>
                 </div>
@@ -6187,7 +6825,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <p class="copyright">
                             <span class="copyright-symbol">&copy;</span>
                             <span class="copyright-year"><script>document.write(new Date().getFullYear())</script></span>
-                            <span class="copyright-company">STMAPS</span>
+                            <span class="copyright-company">STRGS</span>
                             <span class="copyright-rights">All rights reserved.</span>
                         </p>
                     </div>

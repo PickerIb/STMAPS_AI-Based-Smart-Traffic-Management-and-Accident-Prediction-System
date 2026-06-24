@@ -5,10 +5,44 @@ session_start();
 // Require user to be logged in
 requireLogin();
 
-$user_name = $_SESSION['user_name'] ?? 'Authority';
-$user_email = $_SESSION['user_email'] ?? 'authority@example.com';
-$user_type = $_SESSION['user_type'] ?? 'traffic_authority';
-$user_type_label = ucwords(str_replace('_', ' ', $user_type));
+$user_name = $_SESSION['user_name'] ?? 'User';
+$user_email = $_SESSION['user_email'] ?? 'user@example.com';
+$user_type = $_SESSION['user_type'] ?? 'driver';
+$user_type_label = getUserTypeLabel($user_type);
+
+$nav_sections = [];
+switch ($user_type) {
+    case 'driver':
+        $nav_sections = [
+            ['id' => 'dashboard', 'icon' => 'fa-home', 'label' => 'Home'],
+            ['id' => 'route-map', 'icon' => 'fa-route', 'label' => 'Route Guidance'],
+            ['id' => 'road-status', 'icon' => 'fa-road', 'label' => 'Road Status'],
+            ['id' => 'notifications', 'icon' => 'fa-bell', 'label' => 'Notifications'],
+            ['id' => 'travel-history', 'icon' => 'fa-history', 'label' => 'Travel History'],
+            ['id' => 'profile', 'icon' => 'fa-user', 'label' => 'Profile'],
+        ];
+        break;
+    case 'traffic_authority':
+        $nav_sections = [
+            ['id' => 'dashboard', 'icon' => 'fa-tachometer-alt', 'label' => 'Dashboard'],
+            ['id' => 'predictions', 'icon' => 'fa-edit', 'label' => 'Update Road Status'],
+            ['id' => 'analytics', 'icon' => 'fa-exclamation-triangle', 'label' => 'Report Incidents'],
+            ['id' => 'reports', 'icon' => 'fa-chart-pie', 'label' => 'Monitor Roads'],
+        ];
+        break;
+    case 'administrator':
+        $nav_sections = [
+            ['id' => 'dashboard', 'icon' => 'fa-tachometer-alt', 'label' => 'Dashboard'],
+            ['id' => 'settings', 'icon' => 'fa-users', 'label' => 'User Management'],
+            ['id' => 'reports', 'icon' => 'fa-file-alt', 'label' => 'Reports'],
+            ['id' => 'analytics', 'icon' => 'fa-cog', 'label' => 'System Settings'],
+        ];
+        break;
+    default:
+        $nav_sections = [
+            ['id' => 'dashboard', 'icon' => 'fa-tachometer-alt', 'label' => 'Dashboard'],
+        ];
+}
 ?>
 
 <!DOCTYPE html>
@@ -16,7 +50,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-Based Smart Traffic Management - Dashboard</title>
+    <title>STRGS - Smart Traffic Route Guidance System</title>
     <link rel="icon" type="image/png" href="logo1.png">
     
     <!-- Bootstrap CSS -->
@@ -30,7 +64,11 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
     <!-- GSAP -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
-    
+    <?php if ($user_type === 'driver'): ?>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+    <link rel="stylesheet" href="static/driver-dashboard.css">
+    <?php endif; ?>
+
     <style>
         :root {
             --primary-color: #000000;
@@ -243,6 +281,13 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
             color: white;
             font-weight: 700;
             font-size: 1.1rem;
+            overflow: hidden;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .user-info {
@@ -590,9 +635,9 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-logo">
-                <img src="logo1.png" alt="AI STMAPS Logo">
+                <img src="logo1.png" alt="STRGS Logo">
             </div>
-            <div class="sidebar-title">AI STMAPS</div>
+            <div class="sidebar-title">STRGS</div>
         </div>
         
         <div class="sidebar-toggle" id="sidebarToggle">
@@ -600,36 +645,14 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
         </div>
         
         <nav class="sidebar-nav">
+            <?php foreach ($nav_sections as $index => $nav): ?>
             <div class="nav-item">
-                <a href="#dashboard" class="nav-link active" data-section="dashboard">
-                    <i class="fas fa-tachometer-alt nav-icon"></i>
-                    <span class="nav-text">AI Dashboard</span>
+                <a href="#<?php echo htmlspecialchars($nav['id']); ?>" class="nav-link<?php echo $index === 0 ? ' active' : ''; ?>" data-section="<?php echo htmlspecialchars($nav['id']); ?>">
+                    <i class="fas <?php echo htmlspecialchars($nav['icon']); ?> nav-icon"></i>
+                    <span class="nav-text"><?php echo htmlspecialchars($nav['label']); ?></span>
                 </a>
             </div>
-            <div class="nav-item">
-                <a href="#predictions" class="nav-link" data-section="predictions">
-                    <i class="fas fa-brain nav-icon"></i>
-                    <span class="nav-text">AI Predictions</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="#analytics" class="nav-link" data-section="analytics">
-                    <i class="fas fa-chart-pie nav-icon"></i>
-                    <span class="nav-text">Traffic Analytics</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="#reports" class="nav-link" data-section="reports">
-                    <i class="fas fa-file-alt nav-icon"></i>
-                    <span class="nav-text">AI Reports</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="#settings" class="nav-link" data-section="settings">
-                    <i class="fas fa-cog nav-icon"></i>
-                    <span class="nav-text">AI Settings</span>
-                </a>
-            </div>
+            <?php endforeach; ?>
             <div class="nav-item">
                 <a href="logout.php" class="nav-link">
                     <i class="fas fa-sign-out-alt nav-icon"></i>
@@ -643,14 +666,18 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
     <div class="main-content" id="mainContent">
         <!-- Top Bar -->
         <div class="top-bar">
-            <h1 class="page-title" id="pageTitle">AI-Based Smart Traffic Management and Accident Prediction System</h1>
+            <h1 class="page-title" id="pageTitle">Smart Traffic Route Guidance System</h1>
             <div class="user-menu">
-                <div class="user-avatar">
-                    <?php echo strtoupper(substr($user_name, 0, 1)); ?>
+                <div class="user-avatar" id="topUserAvatar">
+                    <?php if (!empty($_SESSION['profile_picture'] ?? null)): ?>
+                        <img src="<?php echo htmlspecialchars($_SESSION['profile_picture']); ?>" alt="User avatar">
+                    <?php else: ?>
+                        <?php echo strtoupper(substr($user_name, 0, 1)); ?>
+                    <?php endif; ?>
                 </div>
                 <div class="user-info">
-                    <div class="user-name"><?php echo htmlspecialchars($user_name); ?></div>
-                    <div class="user-email"><?php echo htmlspecialchars($user_email); ?></div>
+                    <div class="user-name" id="topUserName"><?php echo htmlspecialchars($user_name); ?></div>
+                    <div class="user-email" id="topUserEmail"><?php echo htmlspecialchars($user_email); ?></div>
                     <div class="user-type"><?php echo htmlspecialchars($user_type_label); ?></div>
                 </div>
             </div>
@@ -658,6 +685,9 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
 
         <!-- Content Area -->
         <div class="content-area">
+            <?php if ($user_type === 'driver'): ?>
+                <?php include __DIR__ . '/includes/driver_dashboard.php'; ?>
+            <?php else: ?>
             <!-- Dashboard Section -->
             <div id="dashboard-section" class="content-section">
                 <!-- Stats Grid -->
@@ -674,14 +704,14 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                             <i class="fas fa-chart-line"></i>
                         </div>
                         <div class="stat-number" id="accuracyRate">0%</div>
-                        <div class="stat-label">Risk Detection Rate</div>
+                        <div class="stat-label">Road Status Accuracy</div>
                     </div>
                     <div class="stat-card fade-in">
                         <div class="stat-icon accent">
                             <i class="fas fa-lightbulb"></i>
                         </div>
                         <div class="stat-number" id="totalPredictions">0</div>
-                        <div class="stat-label">Predictions Generated</div>
+                        <div class="stat-label">Route Analyses</div>
                     </div>
                     <div class="stat-card fade-in">
                         <div class="stat-icon success">
@@ -693,32 +723,76 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                 </div>
 
                 <!-- Charts Section -->
-                <div class="dashboard-card fade-in">
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="dashboard-card fade-in h-100">
+                            <div class="card-header">
+                                <h3 class="card-title">
+                                    <i class="fas fa-calendar-day"></i>
+                                    Current Month Trends (Daily)
+                                </h3>
+                            </div>
+                            <small class="text-muted">Daily route guidance volume and road status trends for this month.</small>
+                            <div class="chart-container mt-2">
+                                <canvas id="performanceChartMonth"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="dashboard-card fade-in h-100">
+                            <div class="card-header">
+                                <h3 class="card-title">
+                                    <i class="fas fa-calendar-alt"></i>
+                                    Current Year Trends (Monthly)
+                                </h3>
+                            </div>
+                            <small class="text-muted">Month-by-month route guidance summary for the current year.</small>
+                            <div class="chart-container mt-2">
+                                <canvas id="performanceChartYear"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-card fade-in mb-4">
                     <div class="card-header">
                         <h3 class="card-title">
-                            <i class="fas fa-chart-area"></i>
-                            Performance Trends
+                            <i class="fas fa-map-marked-alt"></i>
+                            District Road Status Comparison
                         </h3>
                     </div>
-                    <div class="chart-container">
-                        <canvas id="performanceChart"></canvas>
+                    <small class="text-muted">Average congestion by district (zone) based on road status history.</small>
+                    <div class="chart-container mt-2">
+                        <canvas id="districtRiskChart"></canvas>
                     </div>
                 </div>
 
                 <!-- Quick Actions -->
                 <div class="quick-actions">
+                    <?php if (in_array($user_type, ['driver', 'traffic_authority'], true)): ?>
                     <a href="#" class="action-btn fade-in" id="newPrediction">
                         <div class="action-icon">
-                            <i class="fas fa-plus"></i>
+                            <i class="fas fa-<?php echo $user_type === 'driver' ? 'route' : 'edit'; ?>"></i>
                         </div>
-                        <span>New Prediction</span>
+                        <span><?php echo $user_type === 'driver' ? 'Get Route Guidance' : 'Update Road Status'; ?></span>
                     </a>
-                    <a href="#" class="action-btn fade-in" id="uploadData">
+                    <?php endif; ?>
+                    <?php if ($user_type === 'traffic_authority'): ?>
+                    <a href="#" class="action-btn fade-in" id="reportIncident">
                         <div class="action-icon">
-                            <i class="fas fa-file-upload"></i>
+                            <i class="fas fa-exclamation-triangle"></i>
                         </div>
-                        <span>Upload Data</span>
+                        <span>Report Incident</span>
                     </a>
+                    <?php endif; ?>
+                    <?php if ($user_type === 'administrator'): ?>
+                    <a href="#" class="action-btn fade-in" id="manageUsers">
+                        <div class="action-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <span>Manage Users</span>
+                    </a>
+                    <?php endif; ?>
                     <a href="#" class="action-btn fade-in" id="viewReports">
                         <div class="action-icon">
                             <i class="fas fa-file-alt"></i>
@@ -746,8 +820,8 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                 <div class="dashboard-card">
                     <div class="card-header">
                         <h3 class="card-title">
-                            <i class="fas fa-chart-line"></i>
-                            Predictions
+                            <i class="fas fa-route"></i>
+                            Route Guidance
                         </h3>
                     </div>
                     <div id="predictionsContent">
@@ -797,6 +871,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -805,7 +880,14 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
+    <?php if ($user_type === 'driver'): ?>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="static/driver-dashboard.js"></script>
+    <?php else: ?>
     <script>
+        const STRGS_USER_TYPE = <?php echo json_encode($user_type); ?>;
+        const STRGS_NAV_LABELS = <?php echo json_encode(array_column($nav_sections, 'label', 'id')); ?>;
+
         $(document).ready(function() {
             // Initialize dashboard
             initializeDashboard();
@@ -874,13 +956,13 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                 
                 // Update page title
                 const titles = {
-                    'dashboard': 'AI-Based Smart Traffic Management and Accident Prediction System',
-                    'predictions': 'Performance Predictions',
-                    'analytics': 'Traffic Analytics Dashboard',
-                    'reports': 'Reports & Analytics',
-                    'settings': 'System Settings'
+                    'dashboard': 'Smart Traffic Route Guidance System',
+                    'predictions': STRGS_USER_TYPE === 'driver' ? 'Route Guidance' : (STRGS_USER_TYPE === 'traffic_authority' ? 'Update Road Status' : 'Route Analysis'),
+                    'analytics': STRGS_USER_TYPE === 'driver' ? 'Road Status' : (STRGS_USER_TYPE === 'traffic_authority' ? 'Report Incidents' : 'System Settings'),
+                    'reports': STRGS_USER_TYPE === 'traffic_authority' ? 'Monitor Roads' : 'Reports & Analytics',
+                    'settings': 'User Management'
                 };
-                $('#pageTitle').text(titles[section] || 'AI-Based Smart Traffic Management and Accident Prediction System');
+                $('#pageTitle').text(titles[section] || STRGS_NAV_LABELS[section] || 'Smart Traffic Route Guidance System');
                 
                 // Show/hide sections
                 $('.content-section').hide();
@@ -907,9 +989,9 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                             <div class="row">
                                 <div class="col-md-12">
                                     <div class="d-flex justify-content-between align-items-center mb-4">
-                                        <h5><i class="fas fa-brain me-2"></i>AI Traffic Predictions</h5>
+                                        <h5><i class="fas fa-route me-2"></i>${STRGS_USER_TYPE === 'driver' ? 'Route Guidance' : 'Road Status Updates'}</h5>
                                         <button class="btn btn-primary" id="newPredictionBtn">
-                                            <i class="fas fa-plus me-2"></i>New Prediction
+                                            <i class="fas fa-plus me-2"></i>${STRGS_USER_TYPE === 'driver' ? 'Get Route Guidance' : 'Update Road Status'}
                                         </button>
                                     </div>
                                 </div>
@@ -920,7 +1002,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                 <div class="col-md-12">
                                     <div class="card">
                                         <div class="card-header">
-                                            <h6 class="mb-0"><i class="fas fa-calculator me-2"></i>Congestion & Accident Risk Prediction</h6>
+                                            <h6 class="mb-0"><i class="fas fa-calculator me-2"></i>${STRGS_USER_TYPE === 'driver' ? 'Route Guidance Request' : 'Road Status & Congestion Update'}</h6>
                                         </div>
                                         <div class="card-body">
                                             <form id="predictionForm">
@@ -989,7 +1071,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                                     <div class="col-12">
                                                         <div class="d-flex gap-2">
                                                             <button type="submit" class="btn btn-primary">
-                                                                <i class="fas fa-brain me-2"></i>Generate Prediction
+                                                                <i class="fas fa-route me-2"></i>${STRGS_USER_TYPE === 'driver' ? 'Get Route Guidance' : 'Submit Road Status'}
                                                             </button>
                                                             <button type="button" class="btn btn-secondary" id="loadSampleData">
                                                                 <i class="fas fa-download me-2"></i>Load Sample Data
@@ -1011,7 +1093,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                 <div class="col-md-12">
                                     <div class="card">
                                         <div class="card-header">
-                                            <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>Prediction Results</h6>
+                                            <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>Route Guidance Results</h6>
                                         </div>
                                         <div class="card-body">
                                             <div id="predictionResults"></div>
@@ -1025,13 +1107,13 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                 <div class="col-md-12">
                                     <div class="card">
                                         <div class="card-header">
-                                            <h6 class="mb-0"><i class="fas fa-history me-2"></i>Recent Predictions</h6>
+                                            <h6 class="mb-0"><i class="fas fa-history me-2"></i>Recent Route Guidance</h6>
                                         </div>
                                         <div class="card-body">
                                             <div id="predictionHistory">
                                                 <div class="text-center py-4">
                                                     <i class="fas fa-brain fa-3x text-muted mb-3"></i>
-                                                    <p class="text-muted">No predictions made yet. Create your first prediction above!</p>
+                                                    <p class="text-muted">No route guidance requests yet. Start by requesting guidance above.</p>
                                                 </div>
                                             </div>
                                         </div>
@@ -1044,10 +1126,10 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                         contentDiv.html(`
                             <div class="row">
                                 <div class="col-md-6">
-                                    <h5>AI Traffic Analytics</h5>
+                                    <h5>${STRGS_USER_TYPE === 'driver' ? 'Road Status Overview' : (STRGS_USER_TYPE === 'traffic_authority' ? 'Report Incidents' : 'System Settings')}</h5>
                                     <p>Advanced machine learning analysis of traffic flow patterns, congestion behavior, and accident risk trends.</p>
                                     <div class="mt-3">
-                                        <h6>Key AI Analysis:</h6>
+                                        <h6>Key Road Status Insights:</h6>
                                         <ul>
                                             <li>Traffic flow trends identified by AI</li>
                                             <li>Risk factors for road safety incidents</li>
@@ -1057,7 +1139,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <h5>AI Generated Congestion Distribution</h5>
+                                    <h5>Congestion Distribution</h5>
                                     <div class="chart-container">
                                         <canvas id="gradeChart"></canvas>
                                     </div>
@@ -1072,7 +1154,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                     <div class="d-flex align-items-center justify-content-between">
                                         <div>
                                             <h5 class="mb-1"><i class="fas fa-chart-line me-2"></i>Reports</h5>
-                                            <small class="text-muted">Auto-generated from recent traffic readings, zones, and AI risk analysis</small>
+                                            <small class="text-muted">Based on recent traffic readings, zones, and road status updates</small>
                                         </div>
                                         <div class="d-flex gap-2">
                                             <button class="btn btn-success btn-sm" id="btnExportCSV"><i class="fas fa-file-excel me-1"></i> Export as CSV</button>
@@ -1107,11 +1189,11 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                 <div class="col-md-6 mb-4">
                                     <div class="card h-100">
                                         <div class="card-body">
-                                            <h6 class="card-title">Recent AI Traffic Risk Predictions</h6>
+                                            <h6 class="card-title">Recent Route Guidance & Road Status</h6>
                                             <div class="table-responsive">
                                                 <table class="table table-sm mb-0">
                                                     <thead>
-                                                        <tr><th>Segment</th><th>Congestion</th><th>Accident Risk</th><th>Confidence</th><th>When</th></tr>
+                                                        <tr><th>Segment</th><th>Congestion</th><th>Road Risk</th><th>Confidence</th><th>When</th></tr>
                                                     </thead>
                                                     <tbody id="recentPredTable"><tr><td colspan="5" class="text-muted">Loading...</td></tr></tbody>
                                                 </table>
@@ -1133,7 +1215,8 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                         contentDiv.html(`
                             <div class="row">
                                 <div class="col-md-6">
-                                    <h5>AI System Settings</h5>
+                                    <h5>User Management</h5>
+                                    <p>Manage drivers, traffic police officers, and admin accounts for STRGS.</p>
                                     <form id="profileForm">
                                         <div class="mb-3">
                                             <label class="form-label">Full Name</label>
@@ -1165,10 +1248,10 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                     </form>
                                 </div>
                                 <div class="col-md-6">
-                                    <h5>AI Model Settings</h5>
-                                    <p>Configure AI prediction models and system preferences.</p>
+                                    <h5>System Settings</h5>
+                                    <p>Configure STRGS route guidance preferences and system options.</p>
                                     <div class="mt-3">
-                                        <h6>AI Configuration:</h6>
+                                        <h6>System Configuration:</h6>
                                         <ul>
                                             <li>Machine Learning Model: <strong>Active</strong></li>
                                             <li>Risk Detection Rate: <strong>94.7%</strong></li>
@@ -1235,38 +1318,203 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
         }
 
         function initializeCharts() {
-            // Performance Trends Chart
-            const performanceCtx = document.getElementById('performanceChart').getContext('2d');
-            new Chart(performanceCtx, {
-                type: 'line',
-                data: {
-                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-                    datasets: [{
-                        label: 'Average Performance Score',
-                        data: [75, 78, 82, 79, 85, 88, 86, 90, 87, 92, 89, 94],
-                        borderColor: '#000000',
-                        backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 100
-                        }
+            const monthEl = document.getElementById('performanceChartMonth');
+            const yearEl = document.getElementById('performanceChartYear');
+            const districtRiskEl = document.getElementById('districtRiskChart');
+            if (monthEl || yearEl || districtRiskEl) {
+                $.ajax({
+                    url: 'index.php',
+                    type: 'POST',
+                    data: { action: 'get_reports' },
+                    dataType: 'json'
+                }).done(function(res){
+                    const reports = ((res || {}).reports || {});
+                    const dailyTrend = reports.prediction_current_month_daily || [];
+                    const yearlyTrend = reports.prediction_current_year_monthly || [];
+                    const districtRiskTrend = reports.district_risk_distribution || [];
+
+                    function buildTrendChart(canvasEl, labels, countSeries, confidenceSeries, riskSeries, countAxisTitle) {
+                        if (!canvasEl) return null;
+                        return new Chart(canvasEl.getContext('2d'), {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: [
+                                    {
+                                        label: 'Routes guided',
+                                        data: countSeries,
+                                        borderColor: '#0d6efd',
+                                        backgroundColor: 'rgba(13, 110, 253, 0.10)',
+                                        borderWidth: 3,
+                                        fill: true,
+                                        tension: 0.35,
+                                        yAxisID: 'y'
+                                    },
+                                    {
+                                        label: 'Average confidence (%)',
+                                        data: confidenceSeries,
+                                        borderColor: '#198754',
+                                        backgroundColor: 'rgba(25, 135, 84, 0.08)',
+                                        borderWidth: 2,
+                                        fill: false,
+                                        tension: 0.35,
+                                        yAxisID: 'y1'
+                                    },
+                                    {
+                                        label: 'Average accident risk (%)',
+                                        data: riskSeries,
+                                        borderColor: '#dc3545',
+                                        backgroundColor: 'rgba(220, 53, 69, 0.08)',
+                                        borderWidth: 2,
+                                        fill: false,
+                                        tension: 0.35,
+                                        yAxisID: 'y1'
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { display: true, position: 'bottom' },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                const label = context.dataset.label || '';
+                                                const val = context.parsed.y;
+                                                if (label.includes('%')) return `${label}: ${val}%`;
+                                                return `${label}: ${val}`;
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        title: { display: true, text: countAxisTitle }
+                                    },
+                                    y1: {
+                                        beginAtZero: true,
+                                        max: 100,
+                                        position: 'right',
+                                        grid: { drawOnChartArea: false },
+                                        title: { display: true, text: 'Percentage (%)' }
+                                    }
+                                }
+                            }
+                        });
                     }
-                }
-            });
+
+                    // Daily view for current month (include all days for clarity)
+                    if (monthEl) {
+                        const now = new Date();
+                        const year = now.getFullYear();
+                        const month = now.getMonth(); // 0-based
+                        const daysInMonth = new Date(year, month + 1, 0).getDate();
+                        const byDay = {};
+                        dailyTrend.forEach(x => { byDay[Number(x.day_num)] = x; });
+
+                        const dayLabels = [];
+                        const dayCounts = [];
+                        const dayConfidence = [];
+                        const dayRisk = [];
+                        for (let d = 1; d <= daysInMonth; d++) {
+                            const row = byDay[d] || {};
+                            dayLabels.push(String(d));
+                            dayCounts.push(Number(row.predictions_count) || 0);
+                            dayConfidence.push(Math.round((Number(row.avg_confidence) || 0) * 100));
+                            dayRisk.push(Math.round((Number(row.avg_accident_risk) || 0) * 100));
+                        }
+
+                        if (window._performanceChartMonth) { window._performanceChartMonth.destroy(); }
+                        window._performanceChartMonth = buildTrendChart(
+                            monthEl,
+                            dayLabels,
+                            dayCounts,
+                            dayConfidence,
+                            dayRisk,
+                            'Routes per day'
+                        );
+                    }
+
+                    // Monthly view for current year (all 12 months)
+                    if (yearEl) {
+                        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                        const byMonth = {};
+                        yearlyTrend.forEach(x => { byMonth[Number(x.month_num)] = x; });
+
+                        const yearCounts = [];
+                        const yearConfidence = [];
+                        const yearRisk = [];
+                        for (let m = 1; m <= 12; m++) {
+                            const row = byMonth[m] || {};
+                            yearCounts.push(Number(row.predictions_count) || 0);
+                            yearConfidence.push(Math.round((Number(row.avg_confidence) || 0) * 100));
+                            yearRisk.push(Math.round((Number(row.avg_accident_risk) || 0) * 100));
+                        }
+
+                        if (window._performanceChartYear) { window._performanceChartYear.destroy(); }
+                        window._performanceChartYear = buildTrendChart(
+                            yearEl,
+                            monthNames,
+                            yearCounts,
+                            yearConfidence,
+                            yearRisk,
+                            'Routes per month'
+                        );
+                    }
+
+                    // District risk comparison
+                    if (districtRiskEl) {
+                        const hasDistrictData = districtRiskTrend.length > 0;
+                        const labels = hasDistrictData ? districtRiskTrend.map(x => x.zone || 'Unknown') : ['No data'];
+                        const riskData = hasDistrictData ? districtRiskTrend.map(x => Math.round((Number(x.avg_accident_risk) || 0) * 100)) : [0];
+                        const predictionCounts = hasDistrictData ? districtRiskTrend.map(x => Number(x.predictions_count) || 0) : [0];
+
+                        if (window._districtRiskChart) { window._districtRiskChart.destroy(); }
+                        window._districtRiskChart = new Chart(districtRiskEl.getContext('2d'), {
+                            type: 'bar',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    label: 'Average accident risk (%)',
+                                    data: riskData,
+                                    backgroundColor: 'rgba(220, 53, 69, 0.75)',
+                                    borderColor: '#dc3545',
+                                    borderWidth: 1
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { display: true, position: 'bottom' },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                const i = context.dataIndex;
+                                                const risk = context.parsed.y;
+                                                const count = predictionCounts[i] || 0;
+                                                return `Congestion: ${risk}% (from ${count} route analyses)`;
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        max: 100,
+                                        title: { display: true, text: 'Average accident risk (%)' }
+                                    },
+                                    x: {
+                                        title: { display: true, text: 'Districts (zones)' }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+            }
 
             // Grade Distribution Chart (Analytics section)
             const gradeEl = document.getElementById('gradeChart');
@@ -1303,25 +1551,29 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
         function initializeQuickActions() {
             $('#newPrediction').on('click', function(e) {
                 e.preventDefault();
-                // Navigate to predictions section
                 $('.nav-link[data-section="predictions"]').click();
-                showAlert('Prediction feature is now available! Click "New Prediction" in the predictions section.', 'success');
+                const msg = STRGS_USER_TYPE === 'driver'
+                    ? 'Route guidance is ready. Click "Get Route Guidance" to find the best route.'
+                    : 'Road status update is ready. Click "Update Road Status" to submit changes.';
+                showAlert(msg, 'success');
             });
 
-            // Re-enable Upload Data quick action
-            $('#uploadData').on('click', function(e) {
+            $('#reportIncident').on('click', function(e) {
                 e.preventDefault();
-                openUploadDataModal();
+                $('.nav-link[data-section="analytics"]').click();
+                showAlert('Report accidents, congestion, or road blockages in this section.', 'info');
+            });
+
+            $('#manageUsers').on('click', function(e) {
+                e.preventDefault();
+                $('.nav-link[data-section="settings"]').click();
+                showAlert('Manage drivers, traffic police officers, and admin accounts here.', 'info');
             });
 
             $('#viewReports').on('click', function(e) {
                 e.preventDefault();
-                $('.nav-link[data-section="reports"]').click();
-            });
-
-            $('#exportData').on('click', function(e) {
-                e.preventDefault();
-                showAlert('Export feature coming soon!', 'info');
+                const target = STRGS_USER_TYPE === 'driver' ? 'analytics' : 'reports';
+                $('.nav-link[data-section="' + target + '"]').click();
             });
         }
 
@@ -1389,7 +1641,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                     const when = x.created_at ? new Date(x.created_at).toLocaleString() : '-';
                     return `<tr><td>${segment}</td><td>${congestion}</td><td>${accidentRisk}%</td><td>${confidence}%</td><td>${when}</td></tr>`;
                 }).join('');
-                $('#recentPredTable').html(rows || '<tr><td colspan="5" class="text-muted">No recent traffic predictions</td></tr>');
+                $('#recentPredTable').html(rows || '<tr><td colspan="5" class="text-muted">No recent route guidance records</td></tr>');
             });
         }
 
@@ -1403,7 +1655,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
             }).done(function(res){
                 if (!res.success) { showAlert('Failed to export reports', 'danger'); return; }
                 const r = res.reports || {};
-                const rows = [['Segment','Congestion Level','Accident Risk','Confidence','Created At']];
+                const rows = [['Segment','Congestion Level','Road Risk','Confidence','Created At']];
                 (r.recent_predictions || []).forEach(x => {
                     rows.push([
                         x.segment_name || (x.segment_id ? `Segment #${x.segment_id}` : ''),
@@ -1418,7 +1670,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'ai_reports_traffic_predictions.csv';
+                a.download = 'strgs_route_guidance_reports.csv';
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             });
@@ -1428,7 +1680,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
         function printReportsSection() {
             const printable = $('#reportsContent').html();
             const w = window.open('', '_blank');
-            w.document.write('<html><head><title>AI Reports</title>');
+            w.document.write('<html><head><title>STRGS Reports</title>');
             w.document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">');
             w.document.write('</head><body class="p-3">');
             w.document.write(printable);
@@ -1453,7 +1705,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                 <div class="mb-3">
                                     <label class="form-label">CSV File</label>
                                     <input type="file" class="form-control" id="uploadCsvFile" accept=".csv" />
-                                    <div class="form-text">Expected headers: first_name,last_name,dob,gender,class</div>
+                                    <div class="form-text">Expected traffic headers: segment_name, reading_time, vehicle_count, avg_speed_kmh, density_veh_per_km, weather (optional: visibility_m, temperature_c, source)</div>
                                 </div>
                                 <div id="uploadPreview" class="small text-muted"></div>
                             </div>
@@ -1657,7 +1909,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                 // Show enhanced loading state
                 const submitBtn = $(this).find('button[type="submit"]');
                 const originalText = submitBtn.html();
-                submitBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Processing with AI Engine...').prop('disabled', true);
+                submitBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Processing route guidance...').prop('disabled', true);
                 
                 // Disable all form inputs during processing
                 $('#predictionForm input, #predictionForm select').prop('disabled', true);
@@ -1704,9 +1956,8 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                 scrollTop: $('#predictionResultsSection').offset().top - 100
                             }, 500);
                             
-                            // Show success message with model info
-                            const modelType = response.model_info?.type || 'AI Engine';
-                            showAlert(`AI prediction generated successfully using ${modelType}!`, 'success');
+                            // Show generic success message without engine/internal wording
+                            showAlert('Route guidance generated successfully!', 'success');
                         } else {
                             showAlert(response.message || 'Prediction failed', 'danger');
                             if (response.errors) {
@@ -1851,7 +2102,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                             <div class="modal-body text-center py-4">
                                 <div class="mb-3">
                                     <i class="fas fa-brain fa-3x text-primary mb-3"></i>
-                                    <h5 class="mb-3">AI Prediction Engine Processing</h5>
+                                    <h5 class="mb-3">STRGS Route Guidance Processing</h5>
                                 </div>
                                 <div class="progress mb-3" style="height: 8px;">
                                     <div class="progress-bar progress-bar-striped progress-bar-animated" 
@@ -1864,7 +2115,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                     </div>
                                     <div class="step" id="step2">
                                         <i class="fas fa-spinner fa-spin text-primary me-2"></i>
-                                        <span>Initializing AI model...</span>
+                                        <span>Loading road status data...</span>
                                     </div>
                                     <div class="step" id="step3">
                                         <i class="fas fa-spinner text-muted me-2"></i>
@@ -1872,7 +2123,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                     </div>
                                     <div class="step" id="step4">
                                         <i class="fas fa-spinner text-muted me-2"></i>
-                                        <span>Generating predictions...</span>
+                                        <span>Calculating best route...</span>
                                     </div>
                                     <div class="step" id="step5">
                                         <i class="fas fa-spinner text-muted me-2"></i>
@@ -1948,9 +2199,9 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
             function updateStepText(step) {
                 const stepTexts = {
                     1: 'Validating input data...',
-                    2: 'Initializing AI model...',
+                    2: 'Loading road status data...',
                     3: 'Analyzing performance factors...',
-                    4: 'Generating predictions...',
+                    4: 'Calculating best route...',
                     5: 'Creating recommendations...'
                 };
                 
@@ -2010,7 +2261,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                         <i class="${b.icon} me-2"></i>${level.toUpperCase()}
                                     </div>
                                     <div>
-                                        <h5 class="mb-1">Traffic Prediction</h5>
+                                        <h5 class="mb-1">Route Guidance Result</h5>
                                         <p class="text-muted mb-0">Confidence: ${confidencePct}% | Generated: ${timestamp}</p>
                                     </div>
                                 </div>
@@ -2025,7 +2276,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                     <div class="col-md-6">
                                         <div class="card bg-light">
                                             <div class="card-body text-center">
-                                                <h6 class="card-title">Accident Probability</h6>
+                                                <h6 class="card-title">Road Risk Level</h6>
                                                 <h3 class="text-danger">${accidentPct}%</h3>
                                             </div>
                                         </div>
@@ -2169,7 +2420,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                         
                         ${recommendations.length > 0 ? `
                         <div class="recommendations">
-                            <h6><i class="fas fa-lightbulb text-info me-2"></i>AI Recommendations</h6>
+                            <h6><i class="fas fa-lightbulb text-info me-2"></i>Route Recommendations</h6>
                             <div class="list-group">
                                 ${recommendations.map(rec => `
                                     <div class="list-group-item">
@@ -2299,7 +2550,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                         ` : ''}
                         
                         <div class="prediction-summary mt-4">
-                            <h6><i class="fas fa-chart-pie text-success me-2"></i>Prediction Summary</h6>
+                            <h6><i class="fas fa-chart-pie text-success me-2"></i>Route Guidance Summary</h6>
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="card bg-light">
@@ -2385,7 +2636,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
                                 </div>
                                 <div>
                                     <h6 class="mb-1">Segment #${segmentId || '—'}</h6>
-                                    <small class="text-muted">${timestamp} • Accident risk: ${accidentPct}%</small>
+                                    <small class="text-muted">${timestamp} • Road risk: ${accidentPct}%</small>
                                 </div>
                             </div>
                             <div class="text-end">
@@ -2491,12 +2742,12 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
             const blob = new Blob([`
                 <html>
                 <head>
-                    <title>AI_SAPP Prediction Results</title>
+                    <title>STRGS Route Guidance Results</title>
                     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
                 </head>
                 <body>
                     <div class="container mt-4">
-                        <h2>AI Student Performance Prediction Results</h2>
+                        <h2>STRGS Route Guidance Results</h2>
                         <p>Generated on: ${new Date().toLocaleString()}</p>
                         ${results}
                     </div>
@@ -2507,7 +2758,7 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `prediction-results-${new Date().toISOString().split('T')[0]}.html`;
+            a.download = `strgs-route-results-${new Date().toISOString().split('T')[0]}.html`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -2613,5 +2864,6 @@ $user_type_label = ucwords(str_replace('_', ' ', $user_type));
             }, 3000);
         }
     </script>
+    <?php endif; ?>
 </body>
 </html>

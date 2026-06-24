@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMS Test - STMAPS</title>
+    <title>SMS Test - STRGS</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
@@ -107,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label">Message</label>
-                                    <textarea class="form-control" name="message" rows="3" required><?php echo htmlspecialchars($_POST['message'] ?? 'Registration successful. Welcome to STMAPS.'); ?></textarea>
+                                    <textarea class="form-control" name="message" rows="3" required><?php echo htmlspecialchars($_POST['message'] ?? 'Registration successful. Welcome to STRGS.'); ?></textarea>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Method</label>

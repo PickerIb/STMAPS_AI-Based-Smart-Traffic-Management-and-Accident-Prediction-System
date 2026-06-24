@@ -10,7 +10,7 @@ requireGuest();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Smart Traffic Management AI</title>
+    <title>Login - STRGS Route Guidance System</title>
     <link rel="icon" type="image/png" href="logo1.png">
     
     <!-- Bootstrap CSS -->
@@ -448,10 +448,10 @@ requireGuest();
     <div class="login-container">
         <div class="login-header">
             <div class="login-logo">
-                <img src="logo1.png" alt="AI SAPP Logo">
+                <img src="logo1.png" alt="STRGS Logo">
             </div>
             <h1 class="login-title">Welcome Back</h1>
-            <p class="login-subtitle">Sign in to your magical AI account</p>
+            <p class="login-subtitle">Sign in to STRGS </p>
         </div>
 
         <div id="alertContainer"></div>
@@ -478,9 +478,9 @@ requireGuest();
                 <label for="userType" class="form-label">User Type</label>
                 <select class="form-control" id="userType" name="user_type" required>
                     <option value="">Select user type</option>
-                    <option value="driver">Driver</option>
-                    <option value="traffic_authority">Traffic Authorities</option>
-                    <option value="administrator">Administrator</option>
+                    <option value="driver">Driver / Road User</option>
+                    <option value="traffic_authority">Traffic Police Officer</option>
+                    <option value="administrator">Admin</option>
                 </select>
                 <div class="invalid-feedback"></div>
             </div>
@@ -646,7 +646,7 @@ requireGuest();
                             <i class="fas fa-check checkmark"></i>
                         </div>
                         <div class="access-title">Access Granted</div>
-                        <div class="access-subtitle">Welcome back to AI_STMAPS</div>
+                        <div class="access-subtitle">Welcome back to STRGS</div>
                     </div>
                 </div>
             `);

@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // Get request method and path
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$path = str_replace('/AI_SAPP', '', $path); // Remove base path if needed
+$path = str_replace('/STMAPS', '', $path); // Remove base path if needed
 
 // Route the request
 try {
@@ -49,6 +49,12 @@ try {
             break;
         case '/api/predict':
             handlePredict($method);
+            break;
+        case '/api/driver-licenses':
+            handleDriverLicenses($method);
+            break;
+        case '/api/police-ids':
+            handlePoliceIds($method);
             break;
         default:
             echo APIResponse::error('Endpoint not found', 404);
@@ -681,8 +687,100 @@ function handleAnalytics($method) {
     
     echo APIResponse::success($analytics);
 }
+
+function handleDriverLicenses($method) {
+    if ($method !== 'GET') {
+        echo APIResponse::error('Method not allowed', 405);
+        return;
+    }
+
+    $db = new Database();
+    $conn = $db->getConnection();
+    $registry = new IdRegistry($conn);
+
+    $licenseId = isset($_GET['license_id']) ? trim($_GET['license_id']) : '';
+    if ($licenseId !== '') {
+        if (!preg_match('/^RW-\d{8}$/', $licenseId)) {
+            echo APIResponse::error('Invalid license ID format. Use RW-12345678', 400);
+            return;
+        }
+        $row = $registry->findLicense($licenseId);
+        if (!$row) {
+            echo APIResponse::error('License ID not found', 404);
+            return;
+        }
+        echo APIResponse::success($row);
+        return;
+    }
+
+    $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+    $limit = isset($_GET['limit']) ? min(100, max(1, (int)$_GET['limit'])) : RECORDS_PER_PAGE;
+    $offset = ($page - 1) * $limit;
+
+    $countStmt = $conn->query('SELECT COUNT(*) AS total FROM api_driver_licenses');
+    $total = (int)$countStmt->fetch()['total'];
+
+    $stmt = $conn->prepare('SELECT id, name, license_id FROM api_driver_licenses ORDER BY id ASC LIMIT :limit OFFSET :offset');
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
+
+    echo APIResponse::success([
+        'data' => $stmt->fetchAll(),
+        'pagination' => [
+            'page' => $page,
+            'limit' => $limit,
+            'total' => $total,
+            'pages' => (int)ceil($total / $limit)
+        ]
+    ]);
+}
+
+function handlePoliceIds($method) {
+    if ($method !== 'GET') {
+        echo APIResponse::error('Method not allowed', 405);
+        return;
+    }
+
+    $db = new Database();
+    $conn = $db->getConnection();
+    $registry = new IdRegistry($conn);
+
+    $policeId = isset($_GET['police_id']) ? trim($_GET['police_id']) : '';
+    if ($policeId !== '') {
+        if (!preg_match('/^RNP-\d{5}$/', $policeId)) {
+            echo APIResponse::error('Invalid police ID format. Use RNP-12345', 400);
+            return;
+        }
+        $row = $registry->findPolice($policeId);
+        if (!$row) {
+            echo APIResponse::error('Police ID not found', 404);
+            return;
+        }
+        echo APIResponse::success($row);
+        return;
+    }
+
+    $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+    $limit = isset($_GET['limit']) ? min(100, max(1, (int)$_GET['limit'])) : RECORDS_PER_PAGE;
+    $offset = ($page - 1) * $limit;
+
+    $countStmt = $conn->query('SELECT COUNT(*) AS total FROM api_police_ids');
+    $total = (int)$countStmt->fetch()['total'];
+
+    $stmt = $conn->prepare('SELECT id, name, police_id FROM api_police_ids ORDER BY id ASC LIMIT :limit OFFSET :offset');
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
+
+    echo APIResponse::success([
+        'data' => $stmt->fetchAll(),
+        'pagination' => [
+            'page' => $page,
+            'limit' => $limit,
+            'total' => $total,
+            'pages' => (int)ceil($total / $limit)
+        ]
+    ]);
+}
 ?>
-
-
-
-

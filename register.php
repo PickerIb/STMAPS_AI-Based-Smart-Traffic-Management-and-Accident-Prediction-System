@@ -10,7 +10,7 @@ requireGuest();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - Smart Traffic Management AI</title>
+    <title>Register - STRGS Route Guidance System</title>
     <link rel="icon" type="image/png" href="logo1.png">
     
     <!-- Bootstrap CSS -->
@@ -387,6 +387,23 @@ requireGuest();
             color: var(--primary-color);
         }
 
+        #roleIdContainer .valid-feedback,
+        #roleIdContainer .invalid-feedback {
+            display: block;
+        }
+
+        #roleIdContainer .valid-feedback {
+            color: #198754;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+
+        .role-id-checking {
+            font-size: 0.875rem;
+            color: #666666;
+            margin-top: 0.25rem;
+        }
+
         .alert {
             border-radius: 12px;
             border: none;
@@ -610,10 +627,10 @@ requireGuest();
     <div class="register-container">
         <div class="register-header">
             <div class="register-logo">
-                <img src="logo1.png" alt="AI SAPP Logo">
+                <img src="logo1.png" alt="STRGS Logo">
             </div>
             <h1 class="register-title">Create Account</h1>
-            <p class="register-subtitle">Join the magical world of AI-powered education</p>
+            <p class="register-subtitle">Join STRGS </p>
         </div>
 
         <div id="alertContainer"></div>
@@ -623,14 +640,14 @@ requireGuest();
                 <div class="col-md-6">
                     <div class="form-group">
                         <label for="firstName" class="form-label">First Name</label>
-                        <input type="text" class="form-control" id="firstName" name="first_name" required>
+                        <input type="text" class="form-control" id="firstName" name="first_name" placeholder="e.g. Jean" required>
                         <div class="invalid-feedback"></div>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="form-group">
                         <label for="lastName" class="form-label">Last Name</label>
-                        <input type="text" class="form-control" id="lastName" name="last_name" required>
+                        <input type="text" class="form-control" id="lastName" name="last_name" placeholder="e.g. Mukamana" required>
                         <div class="invalid-feedback"></div>
                     </div>
                 </div>
@@ -638,37 +655,60 @@ requireGuest();
 
             <div class="form-group">
                 <label for="email" class="form-label">Email Address</label>
-                <input type="email" class="form-control" id="email" name="email" required>
+                <input type="email" class="form-control" id="email" name="email" placeholder="e.g. jean.mukamana@email.com" required>
                 <div class="invalid-feedback"></div>
             </div>
 
             <div class="form-group">
                 <label for="username" class="form-label">Username</label>
-                <input type="text" class="form-control" id="username" name="username" required>
+                <input type="text" class="form-control" id="username" name="username" placeholder="Choose a username (min. 3 characters)" required>
                 <div class="invalid-feedback"></div>
             </div>
 
             <div class="form-group">
                 <label for="phoneNumber" class="form-label">Phone Number</label>
-                <input type="tel" class="form-control" id="phoneNumber" name="phone_number" placeholder="+2507XXXXXXXX or 07XXXXXXXX" required>
-                <small class="text-muted">Rwanda format only: +2507XXXXXXXX or 07XXXXXXXX</small>
+                <input type="tel" class="form-control" id="phoneNumber" name="phone_number" placeholder="e.g. 0781234567" required>
+                <small class="text-muted">Rwanda mobile only — you can also use +250, e.g. +250781234567</small>
                 <div class="invalid-feedback"></div>
             </div>
 
             <div class="form-group">
                 <label for="userType" class="form-label">User Type</label>
                 <select class="form-control" id="userType" name="user_type" required>
-                    <option value="">Select user type</option>
-                    <option value="driver">Driver</option>
-                    <option value="traffic_authority">Traffic Authorities</option>
+                    <option value="">Choose your role (Driver or Traffic Police)</option>
+                    <option value="driver">Driver / Road User</option>
+                    <option value="traffic_authority">Traffic Police Officer</option>
                 </select>
                 <div class="invalid-feedback"></div>
+            </div>
+
+            <div id="roleIdContainer" class="form-group" style="display: none;">
+                <div id="licenseIdGroup" style="display: none;">
+                    <label for="licenseId" class="form-label">Driving License ID</label>
+                    <input type="text" class="form-control" id="licenseId" name="license_id" placeholder="e.g. RW-12345678" autocomplete="off">
+                    <small class="text-muted">Enter your Rwanda driving license number</small>
+                    <div class="role-id-checking d-none" id="licenseIdChecking">
+                        <i class="fas fa-spinner fa-spin me-1"></i>Checking license ID...
+                    </div>
+                    <div class="invalid-feedback"></div>
+                    <div class="valid-feedback"></div>
+                </div>
+                <div id="policeIdGroup" style="display: none;">
+                    <label for="policeId" class="form-label">Police ID</label>
+                    <input type="text" class="form-control" id="policeId" name="police_id" placeholder="e.g. RNP-12345" autocomplete="off">
+                    <small class="text-muted">Enter your Rwanda National Police service ID</small>
+                    <div class="role-id-checking d-none" id="policeIdChecking">
+                        <i class="fas fa-spinner fa-spin me-1"></i>Checking police ID...
+                    </div>
+                    <div class="invalid-feedback"></div>
+                    <div class="valid-feedback"></div>
+                </div>
             </div>
 
             <div class="form-group">
                 <label for="password" class="form-label">Password</label>
                 <div class="position-relative">
-                    <input type="password" class="form-control" id="password" name="password" required>
+                    <input type="password" class="form-control" id="password" name="password" placeholder="Create a strong password" required>
                     <button type="button" class="password-toggle" id="passwordToggle">
                         <i class="fas fa-eye"></i>
                     </button>
@@ -707,7 +747,7 @@ requireGuest();
             <div class="form-group">
                 <label for="confirmPassword" class="form-label">Confirm Password</label>
                 <div class="position-relative">
-                    <input type="password" class="form-control" id="confirmPassword" name="confirm_password" required>
+                    <input type="password" class="form-control" id="confirmPassword" name="confirm_password" placeholder="Type your password again" required>
                     <button type="button" class="password-toggle" id="confirmPasswordToggle">
                         <i class="fas fa-eye"></i>
                     </button>
@@ -746,7 +786,7 @@ requireGuest();
                         Account Created Successfully!
                     </h4>
                     <p class="text-muted mb-4" style="color: #333333;">
-                        Welcome to Smart Traffic Management AI!<br>
+                        Welcome to STRGS!<br>
                         Your account has been created and you can now access all features.
                     </p>
                     <div class="countdown-container mb-4">
@@ -774,6 +814,25 @@ requireGuest();
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        let roleIdCheckPending = false;
+        let roleIdVerified = { license: false, police: false };
+        let roleIdLastVerified = { license: '', police: '' };
+
+        function normalizeLicenseId(value) {
+            return value.trim().toUpperCase();
+        }
+
+        function normalizePoliceId(value) {
+            return value.trim().toUpperCase();
+        }
+
+        function resetRoleIdVerification() {
+            roleIdVerified.license = false;
+            roleIdVerified.police = false;
+            roleIdLastVerified.license = '';
+            roleIdLastVerified.police = '';
+        }
+
         $(document).ready(function() {
             // Password visibility toggle
             $('#passwordToggle, #confirmPasswordToggle').on('click', function() {
@@ -794,17 +853,177 @@ requireGuest();
                 updatePasswordStrength();
             });
 
+            $('#userType').on('change', function() {
+                toggleRoleIdField($(this).val());
+            });
+
+            $('#licenseId').on('blur', function() {
+                checkRoleIdAvailability($(this), 'license');
+            });
+
+            $('#policeId').on('blur', function() {
+                checkRoleIdAvailability($(this), 'police');
+            });
+
             // Form validation
             $('#registerForm').on('submit', function(e) {
                 e.preventDefault();
-                
-                if (validateForm()) {
-                    submitRegistration();
-                }
+                handleRegisterSubmit();
             });
 
             // Removed social sign-up buttons
         });
+
+        function toggleRoleIdField(userType) {
+            const $container = $('#roleIdContainer');
+            const $licenseGroup = $('#licenseIdGroup');
+            const $policeGroup = $('#policeIdGroup');
+
+            $('#licenseId, #policeId')
+                .val('')
+                .prop('required', false)
+                .removeClass('is-valid is-invalid');
+            $('#licenseIdGroup .invalid-feedback, #policeIdGroup .invalid-feedback').text('');
+            $('#licenseIdGroup .valid-feedback, #policeIdGroup .valid-feedback').text('');
+            resetRoleIdVerification();
+            $licenseGroup.hide();
+            $policeGroup.hide();
+
+            if (userType === 'driver') {
+                $container.slideDown(200);
+                $licenseGroup.show();
+                $('#licenseId').prop('required', true);
+            } else if (userType === 'traffic_authority') {
+                $container.slideDown(200);
+                $policeGroup.show();
+                $('#policeId').prop('required', true);
+            } else {
+                $container.slideUp(200);
+            }
+        }
+
+        function verifyRoleIdPromise(field, idType) {
+            return new Promise(function(resolve) {
+                let value = field.val();
+                value = idType === 'license' ? normalizeLicenseId(value) : normalizePoliceId(value);
+                field.val(value);
+
+                const $group = field.closest('[id$="Group"]');
+                const $checking = idType === 'license' ? $('#licenseIdChecking') : $('#policeIdChecking');
+
+                field.removeClass('is-valid is-invalid');
+                $group.find('.invalid-feedback').text('');
+                $group.find('.valid-feedback').text('');
+
+                if (value.length === 0) {
+                    field.addClass('is-invalid');
+                    $group.find('.invalid-feedback').text(
+                        idType === 'license' ? 'Driving license ID is required' : 'Police ID is required'
+                    );
+                    roleIdVerified[idType] = false;
+                    resolve({ ok: false });
+                    return;
+                }
+
+                if (idType === 'license') {
+                    if (!/^RW-\d{8}$/.test(value)) {
+                        field.addClass('is-invalid');
+                        $group.find('.invalid-feedback').text('Driving license ID must exactly match RW-12345678 (8 digits after RW-)');
+                        roleIdVerified[idType] = false;
+                        resolve({ ok: false });
+                        return;
+                    }
+                } else if (!/^RNP-\d{5}$/.test(value)) {
+                    field.addClass('is-invalid');
+                    $group.find('.invalid-feedback').text('Police ID must exactly match RNP-12345 (5 digits after RNP-)');
+                    roleIdVerified[idType] = false;
+                    resolve({ ok: false });
+                    return;
+                }
+
+                if (roleIdVerified[idType] && roleIdLastVerified[idType] === value) {
+                    field.addClass('is-valid');
+                    resolve({ ok: true });
+                    return;
+                }
+
+                roleIdVerified[idType] = false;
+
+                roleIdCheckPending = true;
+                $checking.removeClass('d-none');
+
+                $.ajax({
+                    url: 'index.php',
+                    type: 'POST',
+                    data: {
+                        action: 'check_role_id',
+                        id_type: idType,
+                        id_value: value
+                    },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.normalized_id) {
+                            field.val(response.normalized_id);
+                        }
+
+                        if (response.available) {
+                            field.addClass('is-valid');
+                            $group.find('.valid-feedback').text(response.message || 'ID verified in the national registry');
+                            roleIdVerified[idType] = true;
+                            roleIdLastVerified[idType] = field.val();
+                            resolve({ ok: true });
+                        } else {
+                            field.addClass('is-invalid');
+                            $group.find('.invalid-feedback').text(response.message || 'This ID could not be verified');
+                            roleIdVerified[idType] = false;
+                            resolve({ ok: false });
+                        }
+                    },
+                    error: function() {
+                        field.addClass('is-invalid');
+                        $group.find('.invalid-feedback').text('Unable to verify ID against the registry. Please try again.');
+                        roleIdVerified[idType] = false;
+                        resolve({ ok: false });
+                    },
+                    complete: function() {
+                        roleIdCheckPending = false;
+                        $checking.addClass('d-none');
+                    }
+                });
+            });
+        }
+
+        function checkRoleIdAvailability(field, idType) {
+            verifyRoleIdPromise(field, idType);
+        }
+
+        async function handleRegisterSubmit() {
+            if (!validateForm()) {
+                showAlert('warning', 'Please fix the highlighted errors before continuing.');
+                const $firstInvalid = $('#registerForm .is-invalid').first();
+                if ($firstInvalid.length) {
+                    $('html, body').animate({ scrollTop: $firstInvalid.offset().top - 100 }, 300);
+                    $firstInvalid.trigger('focus');
+                }
+                return;
+            }
+
+            const userType = $('#userType').val();
+
+            if (userType === 'driver') {
+                const verified = await verifyRoleIdPromise($('#licenseId'), 'license');
+                if (!verified.ok) {
+                    return;
+                }
+            } else if (userType === 'traffic_authority') {
+                const verified = await verifyRoleIdPromise($('#policeId'), 'police');
+                if (!verified.ok) {
+                    return;
+                }
+            }
+
+            submitRegistration();
+        }
 
         function updatePasswordStrength() {
             const password = $('#password').val();
@@ -918,7 +1137,7 @@ requireGuest();
             const normalizedPhone = normalizeRwandaPhone(phoneNumberRaw);
             if (!normalizedPhone) {
                 $('#phoneNumber').addClass('is-invalid');
-                $('#phoneNumber').siblings('.invalid-feedback').text('Use Rwanda format: +2507XXXXXXXX or 07XXXXXXXX');
+                $('#phoneNumber').siblings('.invalid-feedback').text('Enter a valid Rwanda mobile number, e.g. 0781234567');
                 isValid = false;
             } else {
                 $('#phoneNumber').val(normalizedPhone);
@@ -933,6 +1152,41 @@ requireGuest();
                 isValid = false;
             } else {
                 $('#userType').addClass('is-valid');
+
+                if (userType === 'driver') {
+                    const licenseId = normalizeLicenseId($('#licenseId').val());
+                    $('#licenseId').val(licenseId);
+
+                    if (licenseId.length === 0) {
+                        $('#licenseId').addClass('is-invalid');
+                        $('#licenseIdGroup .invalid-feedback').text('Driving license ID is required');
+                        isValid = false;
+                    } else if (!/^RW-\d{8}$/.test(licenseId)) {
+                        $('#licenseId').addClass('is-invalid');
+                        $('#licenseIdGroup .invalid-feedback').text('Driving license ID must exactly match RW-12345678 (8 digits after RW-)');
+                        isValid = false;
+                    }
+                }
+
+                if (userType === 'traffic_authority') {
+                    const policeId = normalizePoliceId($('#policeId').val());
+                    $('#policeId').val(policeId);
+
+                    if (policeId.length === 0) {
+                        $('#policeId').addClass('is-invalid');
+                        $('#policeIdGroup .invalid-feedback').text('Police ID is required');
+                        isValid = false;
+                    } else if (!/^RNP-\d{5}$/.test(policeId)) {
+                        $('#policeId').addClass('is-invalid');
+                        $('#policeIdGroup .invalid-feedback').text('Police ID must exactly match RNP-12345 (5 digits after RNP-)');
+                        isValid = false;
+                    }
+                }
+            }
+
+            if (roleIdCheckPending) {
+                showAlert('warning', 'Please wait while we verify your ID.');
+                isValid = false;
             }
 
             // Validate password
@@ -975,6 +1229,8 @@ requireGuest();
                 username: $('#username').val().trim(),
                 phone_number: $('#phoneNumber').val().trim(),
                 user_type: $('#userType').val(),
+                license_id: $('#userType').val() === 'driver' ? normalizeLicenseId($('#licenseId').val()) : '',
+                police_id: $('#userType').val() === 'traffic_authority' ? normalizePoliceId($('#policeId').val()) : '',
                 password: $('#password').val(),
                 confirm_password: $('#confirmPassword').val()
             };
@@ -992,7 +1248,22 @@ requireGuest();
                     if (response.success) {
                         showSuccessMessage();
                     } else {
-                        showAlert('danger', response.message);
+                        const message = response.message || 'Registration failed. Please check your details.';
+                        showAlert('danger', message);
+
+                        if (Array.isArray(response.errors)) {
+                            response.errors.forEach(function(error) {
+                                if (error.toLowerCase().includes('driving license') || error.toLowerCase().includes('license id')) {
+                                    $('#licenseId').addClass('is-invalid').removeClass('is-valid');
+                                    $('#licenseIdGroup .invalid-feedback').text(error);
+                                    roleIdVerified.license = false;
+                                } else if (error.toLowerCase().includes('police id')) {
+                                    $('#policeId').addClass('is-invalid').removeClass('is-valid');
+                                    $('#policeIdGroup .invalid-feedback').text(error);
+                                    roleIdVerified.police = false;
+                                }
+                            });
+                        }
                     }
                 },
                 error: function(xhr, status, error) {
@@ -1050,6 +1321,9 @@ requireGuest();
                 // Reset form
                 $('#registerForm')[0].reset();
                 $('.form-control').removeClass('is-valid is-invalid');
+                $('#roleIdContainer').hide();
+                $('#licenseIdGroup, #policeIdGroup').hide();
+                $('#licenseId, #policeId').prop('required', false);
                 $('.password-strength').removeClass('strength-weak strength-fair strength-good strength-strong');
                 $('.strength-fill').css('width', '0%');
                 $('.strength-text').text('Password Strength');

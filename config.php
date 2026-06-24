@@ -6,9 +6,11 @@ define('DB_USER', 'root');
 define('DB_PASS', '');
 
 // Application Configuration
-define('APP_NAME', 'AI-Based Smart Traffic Management and Accident Prediction System');
+define('APP_NAME', 'Smart Traffic Route Guidance System');
+define('APP_ACRONYM', 'STRGS');
+define('APP_SUBTITLE', 'A Case of Remera Sector');
 define('APP_VERSION', '1.0.0');
-define('APP_URL', 'http://localhost/AI_SAPP');
+define('APP_URL', 'http://localhost/STMAPS');
 
 // ML Service Configuration
 define('ML_SERVICE_URL', 'http://localhost:5000');
@@ -36,7 +38,7 @@ define('SMTP_PORT', 587);
 define('SMTP_USERNAME', '');
 define('SMTP_PASSWORD', '');
 define('FROM_EMAIL', 'noreply@smarttraffic.local');
-define('FROM_NAME', 'Smart Traffic AI');
+define('FROM_NAME', 'STRGS');
 
 // Error Reporting
 error_reporting(E_ALL);
@@ -96,8 +98,37 @@ function requireGuest() {
     }
 }
 
+function requireDriver() {
+    requireLogin();
+    if (($_SESSION['user_type'] ?? '') !== 'driver') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Driver access only']);
+        exit();
+    }
+}
+
 function isLoggedIn() {
     return isset($_SESSION['user_id']) && !empty($_SESSION['user_id']);
+}
+
+function getUserTypeLabel($userType) {
+    $labels = [
+        'driver' => 'Driver / Road User',
+        'traffic_authority' => 'Traffic Police Officer',
+        'administrator' => 'Admin',
+    ];
+    return $labels[$userType] ?? ucwords(str_replace('_', ' ', (string)$userType));
+}
+
+function resolveUserTypeFromUser($user) {
+    if ($user->role === 'admin') {
+        return 'administrator';
+    }
+    if ($user->role === 'authority') {
+        return 'traffic_authority';
+    }
+    $storedType = $user->user_type ?? 'driver';
+    return ($storedType === '' || $storedType === null) ? 'driver' : $storedType;
 }
 
 function logout() {
@@ -194,11 +225,14 @@ class User {
     public $email;
     public $phone_number;
     public $user_type;
+    public $license_id;
+    public $police_id;
     public $password_hash;
     public $role;
     public $is_active;
     public $last_login;
     public $updated_at;
+    public $profile_picture;
     
     public function __construct($db) {
         $this->conn = $db;
@@ -206,8 +240,8 @@ class User {
     
     public function create() {
         $query = "INSERT INTO " . $this->table_name . " 
-                  (first_name, last_name, username, email, phone_number, user_type, password_hash, role, is_active) 
-                  VALUES (:first_name, :last_name, :username, :email, :phone_number, :user_type, :password_hash, :role, :is_active)";
+                  (first_name, last_name, username, email, phone_number, user_type, license_id, police_id, password_hash, role, is_active) 
+                  VALUES (:first_name, :last_name, :username, :email, :phone_number, :user_type, :license_id, :police_id, :password_hash, :role, :is_active)";
         
         $stmt = $this->conn->prepare($query);
         
@@ -217,6 +251,8 @@ class User {
         $stmt->bindParam(':email', $this->email);
         $stmt->bindParam(':phone_number', $this->phone_number);
         $stmt->bindParam(':user_type', $this->user_type);
+        $stmt->bindParam(':license_id', $this->license_id);
+        $stmt->bindParam(':police_id', $this->police_id);
         $stmt->bindParam(':password_hash', $this->password_hash);
         $stmt->bindParam(':role', $this->role);
         $stmt->bindParam(':is_active', $this->is_active);
@@ -244,11 +280,14 @@ class User {
             $this->email = $row['email'];
             $this->phone_number = $row['phone_number'] ?? null;
             $this->user_type = $row['user_type'] ?? null;
+            $this->license_id = $row['license_id'] ?? null;
+            $this->police_id = $row['police_id'] ?? null;
             $this->password_hash = $row['password_hash'];
             $this->role = $row['role'];
             $this->is_active = $row['is_active'];
             $this->last_login = $row['last_login'];
             $this->updated_at = $row['updated_at'];
+            $this->profile_picture = $row['profile_picture'] ?? null;
             return true;
         }
         return false;
@@ -270,11 +309,14 @@ class User {
             $this->email = $row['email'];
             $this->phone_number = $row['phone_number'] ?? null;
             $this->user_type = $row['user_type'] ?? null;
+            $this->license_id = $row['license_id'] ?? null;
+            $this->police_id = $row['police_id'] ?? null;
             $this->password_hash = $row['password_hash'];
             $this->role = $row['role'];
             $this->is_active = $row['is_active'];
             $this->last_login = $row['last_login'];
             $this->updated_at = $row['updated_at'];
+            $this->profile_picture = $row['profile_picture'] ?? null;
             return true;
         }
         return false;
@@ -313,6 +355,221 @@ class User {
         $stmt->bindParam(':phone_number', $phone_number);
         $stmt->execute();
         return $stmt->rowCount() > 0;
+    }
+
+    public function licenseIdExists($license_id) {
+        $query = "SELECT id FROM " . $this->table_name . " WHERE license_id = :license_id LIMIT 1";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':license_id', $license_id);
+        $stmt->execute();
+        return $stmt->rowCount() > 0;
+    }
+
+    public function policeIdExists($police_id) {
+        $query = "SELECT id FROM " . $this->table_name . " WHERE police_id = :police_id LIMIT 1";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':police_id', $police_id);
+        $stmt->execute();
+        return $stmt->rowCount() > 0;
+    }
+
+    public function findById($id) {
+        $query = "SELECT * FROM " . $this->table_name . " WHERE id = :id LIMIT 1";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return false;
+        }
+        $this->hydrateFromRow($row);
+        return true;
+    }
+
+    private function hydrateFromRow(array $row) {
+        $this->id = $row['id'];
+        $this->first_name = $row['first_name'] ?? null;
+        $this->last_name = $row['last_name'] ?? null;
+        $this->username = $row['username'];
+        $this->email = $row['email'];
+        $this->phone_number = $row['phone_number'] ?? null;
+        $this->user_type = $row['user_type'] ?? null;
+        $this->license_id = $row['license_id'] ?? null;
+        $this->police_id = $row['police_id'] ?? null;
+        $this->profile_picture = $row['profile_picture'] ?? null;
+        $this->password_hash = $row['password_hash'];
+        $this->role = $row['role'];
+        $this->is_active = $row['is_active'];
+        $this->last_login = $row['last_login'];
+        $this->updated_at = $row['updated_at'];
+    }
+
+    public function updateProfile($first_name, $last_name, $email, $phone_number) {
+        $query = "UPDATE " . $this->table_name . "
+                  SET first_name = :first_name, last_name = :last_name,
+                      email = :email, phone_number = :phone_number, updated_at = NOW()
+                  WHERE id = :id";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':first_name', $first_name);
+        $stmt->bindParam(':last_name', $last_name);
+        $stmt->bindParam(':email', $email);
+        $stmt->bindParam(':phone_number', $phone_number);
+        $stmt->bindParam(':id', $this->id, PDO::PARAM_INT);
+        return $stmt->execute();
+    }
+
+    public function updateProfilePicture($path) {
+        $query = "UPDATE " . $this->table_name . " SET profile_picture = :pic, updated_at = NOW() WHERE id = :id";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':pic', $path);
+        $stmt->bindParam(':id', $this->id, PDO::PARAM_INT);
+        return $stmt->execute();
+    }
+}
+
+class IdRegistry {
+    private $conn;
+
+    public function __construct($db) {
+        $this->conn = $db;
+    }
+
+    public static function normalizeLicenseId($license_id) {
+        return strtoupper(trim((string)$license_id));
+    }
+
+    public static function normalizePoliceId($police_id) {
+        return strtoupper(trim((string)$police_id));
+    }
+
+    public function licenseIdRegistered($license_id) {
+        $license_id = self::normalizeLicenseId($license_id);
+        $query = "SELECT id FROM api_driver_licenses WHERE license_id = :license_id LIMIT 1";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':license_id', $license_id);
+        $stmt->execute();
+        return $stmt->rowCount() > 0;
+    }
+
+    public function policeIdRegistered($police_id) {
+        $police_id = self::normalizePoliceId($police_id);
+        $query = "SELECT id FROM api_police_ids WHERE police_id = :police_id LIMIT 1";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':police_id', $police_id);
+        $stmt->execute();
+        return $stmt->rowCount() > 0;
+    }
+
+    public function findLicense($license_id) {
+        $license_id = self::normalizeLicenseId($license_id);
+        $query = "SELECT id, name, license_id FROM api_driver_licenses WHERE license_id = :license_id LIMIT 1";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':license_id', $license_id);
+        $stmt->execute();
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    public function findPolice($police_id) {
+        $police_id = self::normalizePoliceId($police_id);
+        $query = "SELECT id, name, police_id FROM api_police_ids WHERE police_id = :police_id LIMIT 1";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(':police_id', $police_id);
+        $stmt->execute();
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    public function validateLicenseForRegistration($license_id, User $user) {
+        $license_id = self::normalizeLicenseId($license_id);
+
+        if ($license_id === '') {
+            return [
+                'valid' => false,
+                'reason' => 'required',
+                'message' => 'Driving license ID is required for drivers',
+                'id' => ''
+            ];
+        }
+
+        if (!preg_match('/^RW-\d{8}$/', $license_id)) {
+            return [
+                'valid' => false,
+                'reason' => 'invalid_format',
+                'message' => 'Driving license ID must exactly match the format RW-12345678 (8 digits after RW-)',
+                'id' => $license_id
+            ];
+        }
+
+        if (!$this->licenseIdRegistered($license_id)) {
+            return [
+                'valid' => false,
+                'reason' => 'not_in_registry',
+                'message' => 'This driving license ID was not found in the national driver registry. Enter the exact number shown on your license.',
+                'id' => $license_id
+            ];
+        }
+
+        if ($user->licenseIdExists($license_id)) {
+            return [
+                'valid' => false,
+                'reason' => 'already_registered',
+                'message' => 'This driving license ID is already linked to another STRGS account.',
+                'id' => $license_id
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'reason' => 'valid',
+            'message' => 'Driving license ID verified against the national registry',
+            'id' => $license_id
+        ];
+    }
+
+    public function validatePoliceForRegistration($police_id, User $user) {
+        $police_id = self::normalizePoliceId($police_id);
+
+        if ($police_id === '') {
+            return [
+                'valid' => false,
+                'reason' => 'required',
+                'message' => 'Police ID is required for traffic police officers',
+                'id' => ''
+            ];
+        }
+
+        if (!preg_match('/^RNP-\d{5}$/', $police_id)) {
+            return [
+                'valid' => false,
+                'reason' => 'invalid_format',
+                'message' => 'Police ID must exactly match the format RNP-12345 (5 digits after RNP-)',
+                'id' => $police_id
+            ];
+        }
+
+        if (!$this->policeIdRegistered($police_id)) {
+            return [
+                'valid' => false,
+                'reason' => 'not_in_registry',
+                'message' => 'This police ID was not found in the Rwanda National Police registry. Enter your exact service ID.',
+                'id' => $police_id
+            ];
+        }
+
+        if ($user->policeIdExists($police_id)) {
+            return [
+                'valid' => false,
+                'reason' => 'already_registered',
+                'message' => 'This police ID is already linked to another STRGS account.',
+                'id' => $police_id
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'reason' => 'valid',
+            'message' => 'Police ID verified against the national registry',
+            'id' => $police_id
+        ];
     }
 }
 

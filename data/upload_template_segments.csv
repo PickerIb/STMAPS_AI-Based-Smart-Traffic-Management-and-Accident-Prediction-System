@@ -1,7 +1,0 @@
-segment_id,reading_time,vehicle_count,avg_speed_kmh,density_veh_per_km,weather,visibility_m,temperature_c,source
-1,2026-04-27 08:00:00,820,24.5,68.0,rain,900,21.0,csv_upload
-1,2026-04-27 08:05:00,910,18.2,74.5,rain,850,21.0,csv_upload
-1,2026-04-27 08:10:00,760,29.1,61.0,clear,2000,22.0,csv_upload
-2,2026-04-27 17:00:00,1320,16.0,95.0,storm,500,19.5,csv_upload
-2,2026-04-27 17:05:00,1410,14.8,102.0,storm,450,19.2,csv_upload
-2,2026-04-27 17:10:00,1100,22.0,86.0,fog,700,19.0,csv_upload
