@@ -140,7 +140,10 @@ try {
                 <div class="card-header"><h3 class="card-title"><i class="fas fa-location-dot"></i> Plan Your Trip</h3></div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <label class="form-label">Your location (GPS)</label>
+                        <label class="form-label" for="driverOrigin">Your location (start)</label>
+                        <select class="form-select mb-2" id="driverOrigin">
+                            <option value="__gps__" selected>Use my live GPS location</option>
+                        </select>
                         <div class="input-group">
                             <input type="text" class="form-control" id="driverOriginLabel" readonly value="Use GPS or refresh">
                             <button type="button" class="btn btn-outline-secondary" id="btnEnableGps" title="Enable GPS"><i class="fas fa-crosshairs"></i></button>
@@ -150,14 +153,15 @@ try {
                             <button type="button" class="btn btn-outline-warning btn-sm" id="btnSetManualLocation">
                                 <i class="fas fa-hand-pointer me-1"></i>Use map center as my location
                             </button>
-                            <small class="text-muted">If browser GPS is denied, move the map to your location and use this fallback.</small>
+                            <small class="text-muted">Select a start point above, enable GPS, or move the map and use the fallback button.</small>
                         </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label" for="driverDestination">Destination</label>
-                        <input type="text" class="form-control" id="driverDestination" list="driverDestList" placeholder="Search e.g. Amahoro Stadium" autocomplete="off">
-                        <datalist id="driverDestList"></datalist>
-                        <small class="text-muted">Type to search or click the map to set destination</small>
+                        <select class="form-select" id="driverDestination">
+                            <option value="" disabled selected>Choose a Remera Sector destination…</option>
+                        </select>
+                        <small class="text-muted">Select a destination, then click <strong>Request Route Guidance</strong> to see three route options and choose the best one for you.</small>
                     </div>
                     <button type="button" class="btn btn-dark w-100 mb-2" id="btnRequestRoute">
                         <i class="fas fa-route me-2"></i>Request Route Guidance
@@ -171,7 +175,7 @@ try {
                 </div>
             </div>
             <div class="dashboard-card mt-4" id="driverRouteResults" style="display:none;">
-                <div class="card-header"><h3 class="card-title"><i class="fas fa-list-ol"></i> Route Options</h3></div>
+                <div class="card-header"><h3 class="card-title"><i class="fas fa-list-ol"></i> Choose Your Route</h3></div>
                 <div class="card-body p-0" id="driverRouteList"></div>
             </div>
         </div>
@@ -217,47 +221,20 @@ try {
 
 <!-- Driver: Road Status -->
 <div id="road-status-section" class="content-section driver-section" style="display:none;">
-    <div class="dashboard-card mb-4">
-        <div class="card-header"><h3 class="card-title"><i class="fas fa-chart-pie"></i> Road Status Summary</h3></div>
-        <div class="card-body" id="driverRoadSummary">Loading…</div>
-    </div>
-    <div class="dashboard-card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h3 class="card-title"><i class="fas fa-filter"></i> Filter Roads</h3>
-            <div class="btn-group btn-group-sm" id="driverRoadFilters">
-                <button type="button" class="btn btn-outline-secondary active" data-filter="all"><i class="fas fa-list me-1"></i>All</button>
-                <button type="button" class="btn btn-outline-secondary" data-filter="normal"><i class="fas fa-road-circle-check me-1"></i>Normal</button>
-                <button type="button" class="btn btn-outline-secondary" data-filter="congested"><i class="fas fa-traffic-light me-1"></i>Congested</button>
-                <button type="button" class="btn btn-outline-secondary" data-filter="blocked"><i class="fas fa-ban me-1"></i>Blocked</button>
-                <button type="button" class="btn btn-outline-secondary" data-filter="issues"><i class="fas fa-screwdriver-wrench me-1"></i>Not Working</button>
-            </div>
-        </div>
-    </div>
-    <div class="dashboard-card">
-        <div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> All Roads — Remera Sector</h3></div>
-        <div class="table-responsive">
-            <table class="table table-hover mb-0" id="driverRoadTable">
-                <thead><tr><th>Road</th><th>Status</th><th>Avg. traffic speed (km/h)</th><th>Vehicles</th><th>Weather</th><th>Reason</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
-    <div class="dashboard-card mt-4">
-        <div class="card-header"><h3 class="card-title"><i class="fas fa-circle-info"></i> Roads Not Working & Reasons</h3></div>
-        <div id="driverRoadIssueList" class="p-3">Loading…</div>
-    </div>
-    <div class="dashboard-card mt-4">
-        <div class="card-header"><h3 class="card-title"><i class="fas fa-car-crash"></i> Accident Locations</h3></div>
-        <div id="driverAccidentList" class="p-3">Loading…</div>
-    </div>
+<?php $road_status_mode = 'view'; include __DIR__ . '/road_status_panel.php'; ?>
 </div>
 
 <!-- Driver: Notifications -->
 <div id="notifications-section" class="content-section driver-section" style="display:none;">
     <div class="dashboard-card">
-        <div class="card-header d-flex justify-content-between">
-            <h3 class="card-title"><i class="fas fa-bell"></i> Traffic Alerts & Notifications</h3>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshAlerts"><i class="fas fa-sync"></i></button>
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h3 class="card-title mb-0"><i class="fas fa-bell"></i> Traffic Alerts & Notifications</h3>
+            <div class="d-flex align-items-center gap-2">
+                <small class="text-muted" id="alertsLastRefreshed"></small>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshAlerts">
+                    <i class="fas fa-sync me-1"></i>Refresh
+                </button>
+            </div>
         </div>
         <div id="driverAlertsList" class="driver-feed p-3">Loading…</div>
     </div>
@@ -266,8 +243,12 @@ try {
 <!-- Driver: Travel History -->
 <div id="travel-history-section" class="content-section driver-section" style="display:none;">
     <div class="dashboard-card">
-        <div class="card-header"><h3 class="card-title"><i class="fas fa-history"></i> Travel History</h3></div>
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h3 class="card-title mb-0"><i class="fas fa-history"></i> Travel History</h3>
+            <small class="text-muted" id="historyPageSummary"></small>
+        </div>
         <div id="driverHistoryList" class="p-3">Loading…</div>
+        <div class="card-footer bg-white border-top" id="driverHistoryPagination"></div>
     </div>
 </div>
 

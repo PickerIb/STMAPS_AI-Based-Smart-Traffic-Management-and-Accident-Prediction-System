@@ -44,8 +44,9 @@ define('FROM_NAME', 'STRGS');
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Timezone
-date_default_timezone_set('UTC');
+// Timezone — Remera Sector, Kigali, Rwanda (Central Africa Time, UTC+2)
+define('APP_TIMEZONE', 'Africa/Kigali');
+date_default_timezone_set(APP_TIMEZONE);
 
 // Session Configuration
 ini_set('session.cookie_httponly', 1);
@@ -71,6 +72,7 @@ class Database {
             );
             $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            $this->conn->exec("SET time_zone = '+02:00'");
         } catch(PDOException $exception) {
             echo "Connection error: " . $exception->getMessage();
         }

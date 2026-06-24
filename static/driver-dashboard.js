@@ -19,6 +19,12 @@
     let gpsBusy = false;
     let selectedDest = null;
     let lastRoutes = [];
+    let lastGuidanceMeta = null;
+    let selectedRouteIndex = null;
+    let historyPage = 1;
+    const historyPerPage = 10;
+    let notificationPollTimer = null;
+    let lastNotificationCount = 0;
     let latestRoadStatus = null;
     let currentRoadFilter = 'all';
     let remeraMapConfig = null;
@@ -35,6 +41,7 @@
     let activeHomeBaseLayer = 'street';
     let activeRouteBaseLayer = 'street';
     let homeRefreshTimer = null;
+    let routeRefreshTimer = null;
     let relativeTimeTicker = null;
     let lastRecentUpdates = [];
 
@@ -402,6 +409,20 @@
         stopRelativeTimeTicker();
     }
 
+    function startRouteLiveRefresh() {
+        stopRouteLiveRefresh();
+        routeRefreshTimer = setInterval(function () {
+            loadRouteMap(true);
+        }, 30000);
+    }
+
+    function stopRouteLiveRefresh() {
+        if (routeRefreshTimer) {
+            clearInterval(routeRefreshTimer);
+            routeRefreshTimer = null;
+        }
+    }
+
     function shortRoadName(name) {
         if (!name) return '';
         return String(name).split('(')[0].trim();
@@ -514,6 +535,7 @@
         gps.lat = position.coords.latitude;
         gps.lng = position.coords.longitude;
         gps.label = 'Current GPS location';
+        $('#driverOrigin').val('__gps__');
         $('#driverOriginLabel').val('My current location');
         $('#driverOriginCoords').text(formatCoords(gps.lat, gps.lng));
         $('#driverHomeLocation').text(formatCoords(gps.lat, gps.lng));
@@ -596,15 +618,25 @@
             ensureRouteMap();
             loadRouteMap();
             loadDestinations('');
+            startRouteLiveRefresh();
             setTimeout(function () {
                 if (routeMap) {
                     routeMap.invalidateSize();
                     fitRemeraSector(routeMap);
                 }
             }, 250);
-        } else if (section === 'road-status') {
-            loadRoadStatus();
-        } else if (section === 'notifications') {
+        } else {
+            stopRouteLiveRefresh();
+        }
+        if (section === 'road-status') {
+            if (window.STRGSRoadStatus) {
+                STRGSRoadStatus.load(true);
+                STRGSRoadStatus.startRefresh();
+            }
+        } else if (window.STRGSRoadStatus) {
+            STRGSRoadStatus.stopRefresh();
+        }
+        if (section === 'notifications') {
             loadAlerts('#driverAlertsList');
         } else if (section === 'travel-history') {
             loadTravelHistory();
@@ -679,6 +711,7 @@
         gps.lat = center.lat;
         gps.lng = center.lng;
         gps.label = 'Manual map-selected location';
+        $('#driverOrigin').val('__gps__');
         $('#driverOriginLabel').val('Manual map-selected location');
         $('#driverOriginCoords').text(formatCoords(gps.lat, gps.lng));
         $('#driverHomeLocation').text(formatCoords(gps.lat, gps.lng) + ' (manual)');
@@ -706,7 +739,13 @@
 
         routeMap.on('click', function (e) {
             selectedDest = { lat: e.latlng.lat, lng: e.latlng.lng, name: 'Map selected point' };
-            $('#driverDestination').val(selectedDest.name);
+            let $mapOpt = $('#driverDestination option[value="__map_selected__"]');
+            if (!$mapOpt.length) {
+                $mapOpt = $('<option value="__map_selected__">Map selected point</option>');
+                $('#driverDestination').prepend($mapOpt);
+            }
+            $mapOpt.attr('data-lat', e.latlng.lat).attr('data-lng', e.latlng.lng);
+            $('#driverDestination').val('__map_selected__');
             ensureDestMarker(e.latlng.lat, e.latlng.lng);
         });
 
@@ -744,8 +783,9 @@
         });
     }
 
-    function drawSegments(map, segments, fit, showLabels, layerStore) {
+    function drawSegments(map, segments, fit, showLabels, layerStore, options) {
         const store = layerStore || segmentLayers;
+        const routePlanning = options && options.routePlanning === true;
         store.forEach(function (l) {
             if (map.hasLayer(l)) {
                 map.removeLayer(l);
@@ -755,13 +795,18 @@
         const bounds = [];
 
         segments.forEach(function (seg) {
-            const color = seg.status === 'blocked' ? '#1f2937'
+            const color = routePlanning ? '#94a3b8'
+                : seg.status === 'blocked' ? '#1f2937'
                 : seg.congestion_level === 'low' ? '#22c55e'
                 : seg.congestion_level === 'moderate' ? '#f59e0b'
                 : seg.congestion_level === 'high' ? '#f97316' : '#dc2626';
             const line = L.polyline(
                 [[seg.start_lat, seg.start_lng], [seg.end_lat, seg.end_lng]],
-                { color: color, weight: 7, opacity: 0.9 }
+                {
+                    color: color,
+                    weight: routePlanning ? 4 : 7,
+                    opacity: routePlanning ? 0.4 : 0.9
+                }
             ).bindPopup(
                 '<strong>' + esc(seg.name) + '</strong><br>' +
                 esc(seg.status_label || 'Updated') + '<br>' +
@@ -819,13 +864,13 @@
 
             renderRecentRoadUpdates(res.recent_updates || []);
 
-            renderFeed('#driverHomeNotifications', res.notifications, function (a) {
-                const typeLabel = a.type === 'road_blockage' ? 'Road closure' : a.type === 'incident' ? 'Accident' : 'Congestion';
-                return '<div class="alert-item ' + esc(a.severity || 'info') + '"><div class="d-flex justify-content-between">' +
-                    '<strong>' + typeLabel + '</strong><small>' + esc(formatRoadUpdateTime(a.alert_time)) + '</small></div>' +
-                    '<div>' + esc(a.message) + '</div>' +
-                    (a.segment_name ? '<small class="text-muted">' + esc(a.segment_name) + '</small>' : '') + '</div>';
-            });
+            const homeNotes = res.notifications || [];
+            updateNotificationBadge(res.notification_count != null ? res.notification_count : homeNotes.length);
+            if (!homeNotes.length) {
+                $('#driverHomeNotifications').html('<p class="text-muted mb-0">No recent notifications.</p>');
+            } else {
+                $('#driverHomeNotifications').html(homeNotes.map(renderNotificationItem).join(''));
+            }
         });
 
         post('driver_segments_map').done(function (res) {
@@ -839,63 +884,222 @@
         });
     }
 
-    function loadRouteMap() {
+    function loadRouteMap(silent) {
         post('driver_segments_map').done(function (res) {
             if (!res.success || !routeMap) return;
             if (res.map_config) {
                 remeraMapConfig = res.map_config;
                 $('#driverRouteMapBadge').text(res.map_config.label || 'Remera Sector, Kigali');
-                applyRemeraMapSettings(routeMap, res.map_config);
+                if (!silent) {
+                    applyRemeraMapSettings(routeMap, res.map_config);
+                } else {
+                    routeMap.setMaxBounds(getRemeraBoundsLatLng(res.map_config));
+                }
             }
-            drawSegments(routeMap, res.segments, true, true, routeSegmentLayers);
+            drawSegments(routeMap, res.segments, !silent, false, routeSegmentLayers, { routePlanning: true });
             routeZoneLayer = drawRemeraZoneOverlay(routeMap, res.map_config || remeraMapConfig, routeZoneLayer);
             drawRouteLandmarks(routeMap, res.landmarks || []);
             setRouteBaseLayer(activeRouteBaseLayer);
+
+            if (selectedRouteIndex !== null && lastRoutes[selectedRouteIndex]) {
+                showAllRoutesPreview(lastRoutes, selectedRouteIndex);
+            } else if (lastRoutes.length) {
+                showAllRoutesPreview(lastRoutes, null);
+            }
         });
         if (gps.lat) {
             updateUserMarkers(gps.lat, gps.lng);
         }
     }
 
-    function loadDestinations(q) {
-        post('driver_search_destinations', { query: q }).done(function (res) {
-            if (!res.success) return;
-            const $dl = $('#driverDestList');
-            $dl.empty();
-            res.results.forEach(function (r) {
-                $dl.append('<option value="' + esc(r.name) + '">');
+    function populateLocationSelect($sel, results, keepFirstOptions) {
+        const current = $sel.val();
+        const preserved = [];
+        if (keepFirstOptions) {
+            $sel.find('option').each(function () {
+                const val = $(this).val();
+                if (val === '__gps__' || val === '__map_selected__') {
+                    preserved.push($(this).clone());
+                }
             });
-            window._driverDestCache = res.results;
+        }
+        $sel.empty();
+        preserved.forEach(function ($opt) { $sel.append($opt); });
+        results.forEach(function (r) {
+            $sel.append(
+                $('<option></option>')
+                    .attr('value', r.name)
+                    .attr('data-lat', r.lat)
+                    .attr('data-lng', r.lng)
+                    .text(r.name)
+            );
+        });
+        if (current) {
+            $sel.val(current);
+        }
+    }
+
+    function populateDestinationSelect(results) {
+        const $sel = $('#driverDestination');
+        const current = $sel.val();
+        const mapOpt = $sel.find('option[value="__map_selected__"]').detach();
+        $sel.find('option:not(:first)').remove();
+        window._driverDestCache = results;
+        results.forEach(function (r) {
+            $sel.append(
+                $('<option></option>')
+                    .attr('value', r.name)
+                    .attr('data-lat', r.lat)
+                    .attr('data-lng', r.lng)
+                    .text(r.name)
+            );
+        });
+        if (mapOpt.length) {
+            $sel.prepend(mapOpt);
+        }
+        if (current) {
+            $sel.val(current);
+        }
+        populateLocationSelect($('#driverOrigin'), results, true);
+    }
+
+    function loadDestinations() {
+        post('driver_search_destinations', { query: '' }).done(function (res) {
+            if (!res.success) return;
+            populateDestinationSelect(res.results);
         });
     }
 
-    function resolveDestination() {
-        const val = $('#driverDestination').val().trim();
-        const cache = window._driverDestCache || [];
-        const match = cache.find(function (r) { return r.name === val; });
-        if (match) return match;
-        if (selectedDest && selectedDest.name === val) return selectedDest;
+    function resolveOrigin() {
+        const $opt = $('#driverOrigin option:selected');
+        const val = ($opt.val() || '').trim();
+        if (val === '__gps__' || val === '') {
+            if (gps.lat != null && gps.lng != null) {
+                return { lat: gps.lat, lng: gps.lng, label: gps.label || 'Current GPS location' };
+            }
+            return null;
+        }
+        const lat = parseFloat($opt.attr('data-lat'));
+        const lng = parseFloat($opt.attr('data-lng'));
+        if (!isNaN(lat) && !isNaN(lng)) {
+            return { lat: lat, lng: lng, label: $opt.text() };
+        }
         return null;
     }
 
+    function resolveDestination() {
+        const $opt = $('#driverDestination option:selected');
+        const val = ($opt.val() || '').trim();
+        if (!val) return null;
+        const lat = parseFloat($opt.attr('data-lat'));
+        const lng = parseFloat($opt.attr('data-lng'));
+        if (!isNaN(lat) && !isNaN(lng)) {
+            return { name: val === '__map_selected__' ? 'Map selected point' : val, lat: lat, lng: lng };
+        }
+        const cache = window._driverDestCache || [];
+        const match = cache.find(function (r) { return r.name === val; });
+        if (match) return match;
+        if (selectedDest && (selectedDest.name === val || val === '__map_selected__')) return selectedDest;
+        return null;
+    }
+
+    function fetchOsrmGeometry(origin, dest) {
+        const coords = origin.lng + ',' + origin.lat + ';' + dest.lng + ',' + dest.lat;
+        return $.ajax({
+            url: 'https://router.project-osrm.org/route/v1/driving/' + coords,
+            data: {
+                overview: 'full',
+                geometries: 'geojson',
+                steps: false,
+                alternatives: true
+            },
+            dataType: 'json',
+            timeout: 12000
+        });
+    }
+
+    function applyOsrmGeometryToRoutes(routes, osrmData) {
+        if (!osrmData || osrmData.code !== 'Ok' || !osrmData.routes) {
+            return routes;
+        }
+        let osrmIdx = 0;
+        routes.forEach(function (route) {
+            if (route.road_geometry && route.road_geometry.length >= 2) {
+                return;
+            }
+            const osrmRoute = osrmData.routes[osrmIdx++];
+            if (!osrmRoute) {
+                return;
+            }
+            route.road_geometry = (osrmRoute.geometry.coordinates || []).map(function (c) {
+                return { lat: c[1], lng: c[0] };
+            });
+            route.polyline = route.road_geometry;
+            route.distance_km = Math.round((osrmRoute.distance / 1000) * 100) / 100;
+            route.estimated_minutes = Math.ceil(osrmRoute.duration / 60);
+        });
+        return routes;
+    }
+
+    function routesNeedOsrmGeometry(routes) {
+        return !routes.length || routes.some(function (r) {
+            return !r.road_geometry || r.road_geometry.length < 2;
+        });
+    }
+
+    function finishRouteGuidance(guidance) {
+        lastRoutes = guidance.routes || [];
+        lastGuidanceMeta = {
+            origin: guidance.origin || null,
+            destination: guidance.destination || null,
+            traffic_updated_at: guidance.traffic_updated_at || null
+        };
+        selectedRouteIndex = null;
+
+        function displayRoutes() {
+            renderRouteOptions(lastRoutes, guidance.traffic_updated_at);
+            showAllRoutesPreview(lastRoutes, null);
+        }
+        if (!routesNeedOsrmGeometry(lastRoutes)) {
+            displayRoutes();
+            return;
+        }
+        const origin = guidance.origin;
+        const destination = guidance.destination;
+        if (!origin || !destination) {
+            displayRoutes();
+            return;
+        }
+        fetchOsrmGeometry(origin, destination).done(function (osrmData) {
+            lastRoutes = applyOsrmGeometryToRoutes(lastRoutes, osrmData);
+            displayRoutes();
+        }).fail(function () {
+            displayRoutes();
+        });
+    }
+
     function requestRoute() {
-        if (!gps.lat || !gps.lng) {
-            alert('Please enable GPS first to use your current location as the starting point.');
+        const origin = resolveOrigin();
+        if (!origin) {
+            alert('Please set your starting location using GPS, the list above, or the map center button.');
             enableGps();
             return;
         }
         const dest = resolveDestination();
         if (!dest) {
-            alert('Please select a valid destination from the search list or click on the map.');
+            alert('Please select a destination from the list or click on the map.');
             return;
         }
+
+        updateUserMarkers(origin.lat, origin.lng);
+        ensureDestMarker(dest.lat, dest.lng);
 
         $('#btnRequestRoute').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Calculating…');
 
         post('driver_request_route', {
-            origin_lat: gps.lat,
-            origin_lng: gps.lng,
-            origin_label: gps.label,
+            origin_lat: origin.lat,
+            origin_lng: origin.lng,
+            origin_label: origin.label,
             dest_lat: dest.lat,
             dest_lng: dest.lng,
             destination_label: dest.name
@@ -906,132 +1110,346 @@
                 alert(res.message || 'Route request failed');
                 return;
             }
-            lastRoutes = res.guidance.routes || [];
-            renderRouteOptions(lastRoutes);
-            if (lastRoutes[0]) showRouteOnMap(lastRoutes[0]);
+            finishRouteGuidance(res.guidance || {});
         });
     }
 
-    function renderRouteOptions(routes) {
+    function renderRouteOptions(routes, trafficUpdatedAt) {
         const $wrap = $('#driverRouteResults').show();
         const $list = $('#driverRouteList').empty();
+        if (!routes.length) {
+            $list.append('<p class="text-muted p-3 mb-0">No route options available.</p>');
+            return;
+        }
+
+        const countNote = routes.length < 3
+            ? routes.length + ' route option' + (routes.length === 1 ? '' : 's') + ' found for this trip.'
+            : 'Three route options — preview each one, then choose the best for you.';
+        const liveNote = '<p class="text-muted small px-3 pt-3 mb-2"><i class="fas fa-route me-1"></i>' + countNote +
+            (trafficUpdatedAt ? ' Uses live Remera road data.' : '') + '</p>';
+        $list.append(liveNote);
+
+        const previewColors = ['#6366f1', '#0ea5e9', '#14b8a6'];
         routes.forEach(function (r, i) {
+            const optionNum = r.option_number || (i + 1);
+            const summary = r.summary || 'Compare distance, time, and traffic before you go.';
             $list.append(
-                '<div class="route-option' + (i === 0 ? ' active' : '') + '" data-idx="' + i + '">' +
-                '<div class="fw-semibold">' + esc(r.name) + '</div>' +
+                '<div class="route-option" data-idx="' + i + '">' +
+                '<div class="route-option-head">' +
+                '<span class="route-option-badge" style="background:' + previewColors[i % previewColors.length] + '">' + optionNum + '</span>' +
+                '<div class="route-option-title">' +
+                '<div class="fw-semibold">' + esc(r.name || ('Route ' + optionNum)) + '</div>' +
                 '<div class="small text-muted">' + r.distance_km + ' km · ~' + r.estimated_minutes + ' min</div>' +
-                '<span class="status-pill ' + statusClass(r.congestion_level) + '">' + esc(r.congestion_level) + ' traffic</span></div>'
+                '</div></div>' +
+                '<p class="route-option-summary small text-muted mb-2">' + esc(summary) + '</p>' +
+                '<span class="status-pill ' + statusClass(r.congestion_level) + '">' + esc(r.congestion_level) + ' traffic</span>' +
+                '<div class="route-option-actions mt-2">' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary btn-preview-route" data-idx="' + i + '">' +
+                '<i class="fas fa-eye me-1"></i>Preview on map</button>' +
+                '<button type="button" class="btn btn-sm btn-dark btn-choose-route" data-idx="' + i + '">' +
+                '<i class="fas fa-check me-1"></i>Choose this route</button>' +
+                '</div></div>'
             );
         });
-        $('.route-option').on('click', function () {
-            $('.route-option').removeClass('active');
-            $(this).addClass('active');
-            showRouteOnMap(lastRoutes[$(this).data('idx')]);
+
+        $list.off('click.routeOptions').on('click.routeOptions', '.btn-preview-route', function (e) {
+            e.stopPropagation();
+            previewRoute($(this).data('idx'));
+        }).on('click.routeOptions', '.btn-choose-route', function (e) {
+            e.stopPropagation();
+            chooseRoute($(this).data('idx'));
+        }).on('click.routeOptions', '.route-option', function () {
+            previewRoute($(this).data('idx'));
         });
+    }
+
+    function previewRoute(idx) {
+        idx = Number(idx);
+        if (!lastRoutes[idx]) {
+            return;
+        }
+        selectedRouteIndex = idx;
+        $('.route-option').removeClass('active previewing chosen');
+        $('.route-option[data-idx="' + idx + '"]').addClass('active previewing');
+        showAllRoutesPreview(lastRoutes, idx);
+    }
+
+    function chooseRoute(idx) {
+        idx = Number(idx);
+        const route = lastRoutes[idx];
+        const meta = lastGuidanceMeta;
+        if (!route || !meta || !meta.origin || !meta.destination) {
+            alert('Please request route guidance again before choosing a route.');
+            return;
+        }
+
+        const origin = resolveOrigin();
+        const dest = resolveDestination();
+        const $btn = $('.btn-choose-route[data-idx="' + idx + '"]');
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
+
+        post('driver_confirm_route', {
+            origin_lat: meta.origin.lat,
+            origin_lng: meta.origin.lng,
+            origin_label: origin ? origin.label : 'Current location',
+            dest_lat: meta.destination.lat,
+            dest_lng: meta.destination.lng,
+            destination_label: dest ? dest.name : (meta.destination.label || 'Destination'),
+            route_index: idx
+        }).always(function () {
+            $btn.prop('disabled', false).html('<i class="fas fa-check me-1"></i>Choose this route');
+        }).done(function (res) {
+            if (!res.success) {
+                alert(res.message || 'Could not save your route choice.');
+                return;
+            }
+            selectedRouteIndex = idx;
+            $('.route-option').removeClass('active previewing chosen');
+            $('.route-option[data-idx="' + idx + '"]').addClass('active chosen');
+            showAllRoutesPreview(lastRoutes, idx);
+            alert(res.message || 'Route saved. Drive safely.');
+        });
+    }
+
+    function getRouteLatLngs(route) {
+        if (route.road_geometry && route.road_geometry.length >= 2) {
+            return route.road_geometry.map(function (p) { return [p.lat, p.lng]; });
+        }
+        const roadLines = route.road_lines || [];
+        if (roadLines.length) {
+            return roadLines.reduce(function (acc, segmentLine) {
+                return acc.concat(segmentLine.map(function (p) { return [p.lat, p.lng]; }));
+            }, []);
+        }
+        if (route.polyline && route.polyline.length >= 2) {
+            return route.polyline.map(function (p) { return [p.lat, p.lng]; });
+        }
+        if (route.segments && route.segments.length) {
+            return route.segments.reduce(function (acc, seg) {
+                return acc.concat([[seg.start_lat, seg.start_lng], [seg.end_lat, seg.end_lng]]);
+            }, []);
+        }
+        return [];
+    }
+
+    function showAllRoutesPreview(routes, highlightIdx) {
+        clearRouteHighlight();
+        if (!routeMap || !routes.length) {
+            return;
+        }
+
+        const previewColors = ['#6366f1', '#0ea5e9', '#14b8a6'];
+        const bounds = [];
+
+        routes.forEach(function (route, i) {
+            const latlngs = getRouteLatLngs(route);
+            if (latlngs.length < 2) {
+                return;
+            }
+            const isActive = highlightIdx === i;
+            const line = L.polyline(latlngs, {
+                color: isActive ? '#1d4ed8' : (previewColors[i % previewColors.length]),
+                weight: isActive ? 8 : 5,
+                opacity: isActive ? 0.95 : 0.45,
+                lineJoin: 'round',
+                lineCap: 'round'
+            }).addTo(routeMap);
+            routeLayers.push(line);
+            latlngs.forEach(function (ll) { bounds.push(ll); });
+        });
+
+        if (bounds.length) {
+            routeMap.fitBounds(bounds, { padding: [40, 40] });
+        }
+    }
+
+    function clearRouteHighlight() {
+        if (!routeMap) return;
+        routeLayers.forEach(function (l) { routeMap.removeLayer(l); });
+        routeLayers = [];
     }
 
     function showRouteOnMap(route) {
-        routeLayers.forEach(function (l) { routeMap.removeLayer(l); });
-        routeLayers = [];
-        if (!route || !route.polyline) return;
-        const latlngs = route.polyline.map(function (p) { return [p.lat, p.lng]; });
-        const line = L.polyline(latlngs, { color: '#2563eb', weight: 5, opacity: 0.9 }).addTo(routeMap);
-        routeLayers.push(line);
-        routeMap.fitBounds(line.getBounds(), { padding: [40, 40] });
+        const idx = lastRoutes.indexOf(route);
+        showAllRoutesPreview(lastRoutes, idx >= 0 ? idx : null);
     }
 
     function loadRoadStatus() {
-        post('driver_road_status').done(function (res) {
-            if (!res.success) return;
-            latestRoadStatus = res;
-            const s = res.summary;
-            $('#driverRoadSummary').html(
-                '<div class="road-summary-grid">' +
-                '<div class="road-summary-item normal">' +
-                '<div class="road-summary-icon"><i class="fas fa-road-circle-check"></i></div>' +
-                '<div class="road-summary-count">' + s.normal + '</div>' +
-                '<div class="road-summary-label">Normal</div></div>' +
-                '<div class="road-summary-item congested">' +
-                '<div class="road-summary-icon"><i class="fas fa-traffic-light"></i></div>' +
-                '<div class="road-summary-count">' + s.congested + '</div>' +
-                '<div class="road-summary-label">Congested</div></div>' +
-                '<div class="road-summary-item blocked">' +
-                '<div class="road-summary-icon"><i class="fas fa-ban"></i></div>' +
-                '<div class="road-summary-count">' + s.blocked + '</div>' +
-                '<div class="road-summary-label">Blocked</div></div>' +
-                '<div class="road-summary-item issues">' +
-                '<div class="road-summary-icon"><i class="fas fa-screwdriver-wrench"></i></div>' +
-                '<div class="road-summary-count">' + s.road_issues + '</div>' +
-                '<div class="road-summary-label">Not Working</div></div></div>'
-            );
-
-            renderRoadTable(currentRoadFilter);
-            renderFeed('#driverRoadIssueList', res.issue_roads, function (seg) {
-                return '<div class="driver-feed-item"><strong>' + esc(seg.name) + '</strong> — <span class="status-pill ' +
-                    statusClass(seg.congestion_level) + '">' + esc(seg.status_label) + '</span><br><small class="text-muted">' +
-                    esc(seg.reason || 'No reason provided') + '</small></div>';
-            });
-
-            renderFeed('#driverAccidentList', res.accidents, function (a) {
-                return '<div class="driver-feed-item"><strong>' + esc(a.segment_name || 'Unknown road') + '</strong> — ' +
-                    esc(a.severity) + '<br><small>' + esc(a.cause) + ' · ' + esc(a.accident_time) + '</small></div>';
-            });
-        });
-    }
-
-    function getFilteredRoads(filter) {
-        if (!latestRoadStatus) return [];
-        if (filter === 'normal') return latestRoadStatus.normal_roads || [];
-        if (filter === 'congested') return latestRoadStatus.congested_roads || [];
-        if (filter === 'blocked') return latestRoadStatus.blocked_roads || [];
-        if (filter === 'issues') return latestRoadStatus.issue_roads || [];
-        return latestRoadStatus.segments || [];
+        if (window.STRGSRoadStatus) {
+            return STRGSRoadStatus.load();
+        }
     }
 
     function renderRoadTable(filter) {
-        const roads = getFilteredRoads(filter);
-        const $tb = $('#driverRoadTable tbody').empty();
-        if (!roads.length) {
-            $tb.append('<tr><td colspan="6" class="text-center text-muted">No roads found for this filter.</td></tr>');
+        if (window.STRGSRoadStatus) {
+            STRGSRoadStatus.renderTable(filter);
+        }
+    }
+
+    function notificationIcon(item) {
+        if (item.kind === 'road_update') {
+            return 'fa-road';
+        }
+        if (item.type === 'road_blockage') {
+            return 'fa-ban';
+        }
+        if (item.type === 'incident') {
+            return 'fa-car-burst';
+        }
+        return 'fa-triangle-exclamation';
+    }
+
+    function renderNotificationItem(item) {
+        const title = item.title || 'Notification';
+        const time = item.time_label || formatRoadUpdateTime(item.alert_time);
+        const kindClass = item.kind === 'road_update' ? 'notification-road-update' : 'notification-alert';
+        return '<div class="notification-item ' + kindClass + ' alert-item ' + esc(item.severity || 'info') + '">' +
+            '<div class="d-flex justify-content-between align-items-start gap-2">' +
+            '<div class="notification-title-wrap"><i class="fas ' + notificationIcon(item) + ' me-2"></i><strong>' + esc(title) + '</strong></div>' +
+            '<small class="text-muted flex-shrink-0">' + esc(time) + '</small></div>' +
+            '<div class="notification-message">' + esc(item.message) + '</div>' +
+            (item.segment_name ? '<small class="text-muted">' + esc(item.segment_name) + '</small>' : '') +
+            '</div>';
+    }
+
+    function updateNotificationBadge(count) {
+        lastNotificationCount = count || 0;
+        const $badge = $('#headerNotifyBadge');
+        if (!$badge.length) {
             return;
         }
-        roads.forEach(function (seg) {
-            $tb.append('<tr><td>' + esc(seg.name) + '</td><td><span class="status-pill ' +
-                statusClass(seg.congestion_level) + '">' + esc(seg.status_label) + '</span></td><td>' +
-                (seg.avg_speed_kmh != null ? seg.avg_speed_kmh + ' km/h' : '—') + '</td><td>' +
-                (seg.vehicle_count != null ? seg.vehicle_count : '—') + '</td><td>' +
-                esc(seg.weather || '—') + '</td><td>' + esc(seg.reason || '—') + '</td></tr>');
+        if (lastNotificationCount > 0) {
+            $badge.text(lastNotificationCount > 99 ? '99+' : String(lastNotificationCount)).show();
+        } else {
+            $badge.hide();
+        }
+    }
+
+    function loadNotificationCount() {
+        post('driver_alerts', { limit: 1, offset: 0 }).done(function (res) {
+            if (res.success) {
+                updateNotificationBadge(res.count || 0);
+            }
         });
     }
 
-    function loadAlerts(target) {
-        post('driver_alerts').done(function (res) {
-            if (!res.success) return;
-            renderFeed(target || '#driverAlertsList', res.alerts, function (a) {
-                const typeLabel = a.type === 'road_blockage' ? 'Road closure' : a.type === 'incident' ? 'Accident' : 'Congestion';
-                return '<div class="alert-item ' + esc(a.severity || 'info') + '"><div class="d-flex justify-content-between">' +
-                    '<strong>' + typeLabel + '</strong><small>' + esc(a.alert_time) + '</small></div>' +
-                    '<div>' + esc(a.message) + '</div>' +
-                    (a.segment_name ? '<small class="text-muted">' + esc(a.segment_name) + '</small>' : '') + '</div>';
-            });
-        });
+    function startNotificationPolling() {
+        stopNotificationPolling();
+        loadNotificationCount();
+        notificationPollTimer = setInterval(loadNotificationCount, 60000);
     }
 
-    function loadTravelHistory() {
-        post('driver_travel_history').done(function (res) {
-            if (!res.success) return;
-            if (!res.history.length) {
-                $('#driverHistoryList').html('<p class="text-muted">No route requests yet. Use Route Guidance to plan a trip.</p>');
+    function stopNotificationPolling() {
+        if (notificationPollTimer) {
+            clearInterval(notificationPollTimer);
+            notificationPollTimer = null;
+        }
+    }
+
+    function loadAlerts(target, forceRefresh) {
+        const selector = target || '#driverAlertsList';
+        const $el = $(selector);
+        const $btn = $('#btnRefreshAlerts');
+        if (forceRefresh) {
+            $btn.prop('disabled', true);
+            $btn.find('i').addClass('fa-spin');
+        }
+        $el.html('<p class="text-muted mb-0"><i class="fas fa-spinner fa-spin me-2"></i>Loading notifications…</p>');
+
+        post('driver_alerts', { limit: 50, offset: 0 }).done(function (res) {
+            if (!res.success) {
+                $el.html('<p class="text-muted mb-0">Could not load notifications.</p>');
                 return;
             }
-            let html = '<div class="table-responsive"><table class="table"><thead><tr><th>Date</th><th>From</th><th>To</th><th>Route</th><th>Distance</th><th>ETA</th></tr></thead><tbody>';
+            const items = res.notifications || res.alerts || [];
+            updateNotificationBadge(res.count || items.length);
+            if (!items.length) {
+                $el.html('<p class="text-muted mb-0">No notifications yet. Road updates from traffic police will appear here.</p>');
+            } else {
+                $el.html(items.map(renderNotificationItem).join(''));
+            }
+            $('#alertsLastRefreshed').text('Updated ' + new Date().toLocaleTimeString());
+        }).fail(function () {
+            $el.html('<p class="text-muted mb-0">Could not load notifications. Check your connection and try Refresh.</p>');
+        }).always(function () {
+            $btn.prop('disabled', false);
+            $btn.find('i').removeClass('fa-spin');
+        });
+    }
+
+    function renderHistoryPagination(pagination) {
+        const $wrap = $('#driverHistoryPagination').empty();
+        if (!pagination) {
+            $('#historyPageSummary').text('');
+            return;
+        }
+
+        const totalLabel = pagination.total + ' trip' + (pagination.total === 1 ? '' : 's');
+        if (pagination.total_pages <= 1) {
+            $('#historyPageSummary').text(totalLabel);
+            return;
+        }
+
+        $('#historyPageSummary').text('Page ' + pagination.page + ' of ' + pagination.total_pages + ' · ' + totalLabel);
+
+        const $nav = $('<nav aria-label="Travel history pages"><ul class="pagination pagination-sm mb-0 justify-content-center flex-wrap"></ul></nav>');
+        const $ul = $nav.find('ul');
+
+        function addItem(label, page, disabled, active) {
+            $ul.append(
+                '<li class="page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '') + '">' +
+                '<button type="button" class="page-link" data-page="' + page + '"' + (disabled ? ' disabled' : '') + '>' + label + '</button></li>'
+            );
+        }
+
+        addItem('Prev', pagination.page - 1, pagination.page <= 1, false);
+
+        const start = Math.max(1, pagination.page - 2);
+        const end = Math.min(pagination.total_pages, pagination.page + 2);
+        for (let p = start; p <= end; p++) {
+            addItem(String(p), p, false, p === pagination.page);
+        }
+
+        addItem('Next', pagination.page + 1, pagination.page >= pagination.total_pages, false);
+        $wrap.append($nav);
+
+        $wrap.off('click.historyPage').on('click.historyPage', '.page-link', function () {
+            const page = Number($(this).data('page'));
+            if (!page || page === historyPage) {
+                return;
+            }
+            loadTravelHistory(page);
+        });
+    }
+
+    function loadTravelHistory(page) {
+        historyPage = Math.max(1, page || historyPage || 1);
+        $('#driverHistoryList').html('<p class="text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Loading travel history…</p>');
+
+        post('driver_travel_history', { page: historyPage, per_page: historyPerPage }).done(function (res) {
+            if (!res.success) {
+                $('#driverHistoryList').html('<p class="text-muted">Could not load travel history.</p>');
+                return;
+            }
+            if (!res.history.length) {
+                $('#driverHistoryList').html('<p class="text-muted">No route requests yet. Use Route Guidance to plan a trip.</p>');
+                renderHistoryPagination(res.pagination || { total: 0, page: 1, total_pages: 1 });
+                return;
+            }
+            let html = '<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr>' +
+                '<th>Date</th><th>From</th><th>To</th><th>Route</th><th>Distance</th><th>ETA</th><th>Traffic</th>' +
+                '</tr></thead><tbody>';
             res.history.forEach(function (h) {
                 html += '<tr><td>' + esc(h.created_at) + '</td><td>' + esc(h.origin_label || 'GPS') + '</td><td>' +
                     esc(h.destination_label) + '</td><td>' + esc(h.route_name) + '</td><td>' + h.distance_km + ' km</td><td>' +
-                    h.estimated_minutes + ' min</td></tr>';
+                    h.estimated_minutes + ' min</td><td><span class="status-pill ' + statusClass(h.congestion_level) + '">' +
+                    esc(h.congestion_level || '—') + '</span></td></tr>';
             });
             html += '</tbody></table></div>';
             $('#driverHistoryList').html(html);
+            renderHistoryPagination(res.pagination);
+        }).fail(function () {
+            $('#driverHistoryList').html('<p class="text-muted">Could not load travel history. Please try again.</p>');
         });
     }
 
@@ -1122,9 +1540,35 @@
             }
         });
         $('#btnRequestRoute').on('click', requestRoute);
-        $('#btnRefreshAlerts').on('click', function () { loadAlerts(); });
-        $('#driverDestination').on('input', function () {
-            loadDestinations($(this).val());
+        $('#btnRefreshAlerts').on('click', function () {
+            loadAlerts('#driverAlertsList', true);
+        });
+        $('#btnHeaderNotifications').on('click', function () {
+            $('.nav-link[data-section="notifications"]').trigger('click');
+        });
+        $('#driverOrigin').on('change', function () {
+            const origin = resolveOrigin();
+            if (!origin) {
+                return;
+            }
+            if ($('#driverOrigin').val() !== '__gps__') {
+                gps.lat = origin.lat;
+                gps.lng = origin.lng;
+                gps.label = origin.label;
+                $('#driverOriginLabel').val(origin.label);
+                $('#driverOriginCoords').text(formatCoords(origin.lat, origin.lng));
+            }
+            updateUserMarkers(origin.lat, origin.lng);
+            if (routeMap) {
+                routeMap.setView([origin.lat, origin.lng], Math.max(routeMap.getZoom(), 15));
+            }
+        });
+        $('#driverDestination').on('change', function () {
+            const dest = resolveDestination();
+            if (dest) {
+                selectedDest = dest;
+                ensureDestMarker(dest.lat, dest.lng);
+            }
         });
 
         $('#driverProfileForm').on('submit', function (e) {
@@ -1170,7 +1614,9 @@
             currentRoadFilter = $(this).data('filter');
             $('#driverRoadFilters [data-filter]').removeClass('active');
             $(this).addClass('active');
-            renderRoadTable(currentRoadFilter);
+            if (window.STRGSRoadStatus) {
+                STRGSRoadStatus.renderTable(currentRoadFilter);
+            }
         });
 
         $('.stat-clickable[data-road-filter]').on('click', function () {
@@ -1214,6 +1660,9 @@
         inspectLocationPermission();
         tryInitialGps();
         loadDestinations('');
+        if ($('#btnHeaderNotifications').length) {
+            startNotificationPolling();
+        }
     });
 
     function tryInitialGps() {

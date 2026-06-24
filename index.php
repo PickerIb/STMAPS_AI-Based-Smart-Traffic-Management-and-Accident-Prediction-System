@@ -1390,11 +1390,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         case 'driver_profile_update':
         case 'driver_upload_avatar':
         case 'driver_road_status':
+        case 'authority_submit_road_reading':
         case 'driver_alerts':
         case 'driver_search_destinations':
         case 'driver_segments_map':
         case 'driver_recent_updates':
         case 'driver_request_route':
+        case 'driver_confirm_route':
         case 'driver_travel_history':
             require_once __DIR__ . '/includes/driver_api_handlers.php';
             handleDriverApiAction($_POST['action']);

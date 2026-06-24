@@ -17,7 +17,23 @@ function driverApiDb(): PDO {
 }
 
 function handleDriverApiAction(string $action): void {
-    requireDriver();
+    $roadStatusReadActions = ['driver_road_status'];
+    $authorityWriteActions = ['authority_submit_road_reading'];
+
+    if (in_array($action, $roadStatusReadActions, true)) {
+        requireLogin();
+        if (!in_array($_SESSION['user_type'] ?? '', ['driver', 'traffic_authority'], true)) {
+            driverApiJson(['success' => false, 'message' => 'Access denied']);
+        }
+    } elseif (in_array($action, $authorityWriteActions, true)) {
+        requireLogin();
+        if (($_SESSION['user_type'] ?? '') !== 'traffic_authority') {
+            driverApiJson(['success' => false, 'message' => 'Traffic police access only']);
+        }
+    } else {
+        requireDriver();
+    }
+
     $userId = (int)$_SESSION['user_id'];
 
     try {
@@ -41,7 +57,8 @@ function handleDriverApiAction(string $action): void {
                     ],
                     'traffic_summary' => $service->getRoadStatusSummary(),
                     'recent_updates' => $service->getRecentRoadUpdates(10),
-                    'notifications' => $service->getDriverAlerts(5),
+                    'notifications' => $service->getDriverNotifications(5, 0),
+                    'notification_count' => $service->countDriverNotifications(),
                     'map_config' => $service->getRemeraMapConfig(),
                 ]);
                 break;
@@ -131,7 +148,7 @@ function handleDriverApiAction(string $action): void {
                 break;
 
             case 'driver_road_status':
-                $segments = $service->getSegmentsWithStatus();
+                $segments = $service->enrichSegmentsForDisplay($service->getSegmentsWithStatus());
                 $blockedRoads = array_values(array_filter($segments, static fn($s) => $s['status'] === 'blocked'));
                 $congestedRoads = array_values(array_filter($segments, static fn($s) => $s['status'] === 'congested'));
                 $normalRoads = array_values(array_filter($segments, static fn($s) => $s['status'] === 'normal'));
@@ -152,13 +169,32 @@ function handleDriverApiAction(string $action): void {
                     'blocked_roads' => $blockedRoads,
                     'issue_roads' => $issueRoads,
                     'accidents' => $accidents,
+                    'meta' => $service->getRoadStatusLiveMeta($segments),
+                    'updated_at' => date('c'),
                 ]);
                 break;
 
+            case 'authority_submit_road_reading':
+                $result = $service->submitTrafficReading($userId, [
+                    'segment_id' => $_POST['segment_id'] ?? 0,
+                    'reading_time' => $_POST['reading_time'] ?? '',
+                    'vehicle_count' => $_POST['vehicle_count'] ?? 0,
+                    'avg_speed_kmh' => $_POST['avg_speed_kmh'] ?? 0,
+                    'density_veh_per_km' => $_POST['density_veh_per_km'] ?? 0,
+                    'weather' => $_POST['weather'] ?? '',
+                    'status_note' => $_POST['status_note'] ?? '',
+                ]);
+                driverApiJson($result);
+                break;
+
             case 'driver_alerts':
+                $limit = max(5, min(100, (int)($_POST['limit'] ?? 30)));
+                $offset = max(0, (int)($_POST['offset'] ?? 0));
                 driverApiJson([
                     'success' => true,
-                    'alerts' => $service->getDriverAlerts(30),
+                    'notifications' => $service->getDriverNotifications($limit, $offset),
+                    'count' => $service->countDriverNotifications(),
+                    'alerts' => $service->getDriverNotifications($limit, $offset),
                 ]);
                 break;
 
@@ -193,8 +229,6 @@ function handleDriverApiAction(string $action): void {
                 $destLat = (float)($_POST['dest_lat'] ?? 0);
                 $destLng = (float)($_POST['dest_lng'] ?? 0);
                 $destLabel = trim($_POST['destination_label'] ?? 'Destination');
-                $originLabel = trim($_POST['origin_label'] ?? 'Current location');
-                $save = ($_POST['save_history'] ?? '1') === '1';
 
                 if (!$originLat || !$originLng || !$destLat || !$destLng) {
                     driverApiJson(['success' => false, 'message' => 'Origin and destination coordinates are required']);
@@ -205,24 +239,57 @@ function handleDriverApiAction(string $action): void {
                     driverApiJson(['success' => false, 'message' => 'No route could be calculated. Try a destination within Remera Sector.']);
                 }
 
-                if ($save && !empty($result['routes'][0])) {
-                    $service->saveRouteRequest($userId, $result['routes'][0], [
-                        'origin_label' => $originLabel,
-                        'origin_lat' => $originLat,
-                        'origin_lng' => $originLng,
-                        'destination_label' => $destLabel,
-                        'destination_lat' => $destLat,
-                        'destination_lng' => $destLng,
-                    ]);
-                }
-
                 driverApiJson(['success' => true, 'guidance' => $result]);
                 break;
 
-            case 'driver_travel_history':
+            case 'driver_confirm_route':
+                $originLat = (float)($_POST['origin_lat'] ?? 0);
+                $originLng = (float)($_POST['origin_lng'] ?? 0);
+                $destLat = (float)($_POST['dest_lat'] ?? 0);
+                $destLng = (float)($_POST['dest_lng'] ?? 0);
+                $destLabel = trim($_POST['destination_label'] ?? 'Destination');
+                $originLabel = trim($_POST['origin_label'] ?? 'Current location');
+                $routeIndex = (int)($_POST['route_index'] ?? -1);
+
+                if (!$originLat || !$originLng || !$destLat || !$destLng) {
+                    driverApiJson(['success' => false, 'message' => 'Origin and destination coordinates are required']);
+                }
+
+                $result = $service->recommendRoutes($originLat, $originLng, $destLat, $destLng, $destLabel);
+                $routes = $result['routes'] ?? [];
+                if ($routeIndex < 0 || !isset($routes[$routeIndex])) {
+                    driverApiJson(['success' => false, 'message' => 'Please select a valid route option.']);
+                }
+
+                $service->saveRouteRequest($userId, $routes[$routeIndex], [
+                    'origin_label' => $originLabel,
+                    'origin_lat' => $originLat,
+                    'origin_lng' => $originLng,
+                    'destination_label' => $destLabel,
+                    'destination_lat' => $destLat,
+                    'destination_lng' => $destLng,
+                ]);
+
                 driverApiJson([
                     'success' => true,
-                    'history' => $service->getTravelHistory($userId, 40),
+                    'message' => 'Your route has been saved. Drive safely.',
+                    'route' => $routes[$routeIndex],
+                ]);
+                break;
+
+            case 'driver_travel_history':
+                $page = max(1, (int)($_POST['page'] ?? 1));
+                $perPage = max(5, min(50, (int)($_POST['per_page'] ?? 10)));
+                $history = $service->getTravelHistoryPaginated($userId, $page, $perPage);
+                driverApiJson([
+                    'success' => true,
+                    'history' => $history['items'],
+                    'pagination' => [
+                        'page' => $history['page'],
+                        'per_page' => $history['per_page'],
+                        'total' => $history['total'],
+                        'total_pages' => $history['total_pages'],
+                    ],
                 ]);
                 break;
 

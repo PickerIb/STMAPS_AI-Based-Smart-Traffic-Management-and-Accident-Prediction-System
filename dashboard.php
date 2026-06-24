@@ -25,9 +25,10 @@ switch ($user_type) {
     case 'traffic_authority':
         $nav_sections = [
             ['id' => 'dashboard', 'icon' => 'fa-tachometer-alt', 'label' => 'Dashboard'],
-            ['id' => 'predictions', 'icon' => 'fa-edit', 'label' => 'Update Road Status'],
+            ['id' => 'road-status', 'icon' => 'fa-road', 'label' => 'Road Status'],
+            ['id' => 'predictions', 'icon' => 'fa-edit', 'label' => 'Enter Road Data'],
             ['id' => 'analytics', 'icon' => 'fa-exclamation-triangle', 'label' => 'Report Incidents'],
-            ['id' => 'reports', 'icon' => 'fa-chart-pie', 'label' => 'Monitor Roads'],
+            ['id' => 'reports', 'icon' => 'fa-chart-pie', 'label' => 'Reports'],
         ];
         break;
     case 'administrator':
@@ -66,6 +67,8 @@ switch ($user_type) {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
     <?php if ($user_type === 'driver'): ?>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+    <link rel="stylesheet" href="static/driver-dashboard.css">
+    <?php elseif ($user_type === 'traffic_authority'): ?>
     <link rel="stylesheet" href="static/driver-dashboard.css">
     <?php endif; ?>
 
@@ -268,6 +271,46 @@ switch ($user_type) {
             display: flex;
             align-items: center;
             gap: 1rem;
+        }
+
+        .header-notify-btn {
+            position: relative;
+            width: 44px;
+            height: 44px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            background: #fff;
+            color: var(--primary-color);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow);
+        }
+
+        .header-notify-btn:hover {
+            background: #f8fafc;
+            transform: translateY(-1px);
+        }
+
+        .header-notify-badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 5px;
+            border-radius: 999px;
+            background: #dc2626;
+            color: #fff;
+            font-size: 0.7rem;
+            font-weight: 700;
+            line-height: 20px;
+            text-align: center;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 6px rgba(220, 38, 38, 0.35);
         }
 
         .user-avatar {
@@ -668,6 +711,12 @@ switch ($user_type) {
         <div class="top-bar">
             <h1 class="page-title" id="pageTitle">Smart Traffic Route Guidance System</h1>
             <div class="user-menu">
+                <?php if ($user_type === 'driver'): ?>
+                <button type="button" class="header-notify-btn" id="btnHeaderNotifications" title="Notifications" aria-label="Notifications">
+                    <i class="fas fa-bell"></i>
+                    <span class="header-notify-badge" id="headerNotifyBadge" style="display:none">0</span>
+                </button>
+                <?php endif; ?>
                 <div class="user-avatar" id="topUserAvatar">
                     <?php if (!empty($_SESSION['profile_picture'] ?? null)): ?>
                         <img src="<?php echo htmlspecialchars($_SESSION['profile_picture']); ?>" alt="User avatar">
@@ -816,6 +865,12 @@ switch ($user_type) {
             </div>
 
             <!-- Other Sections (initially hidden) -->
+            <?php if ($user_type === 'traffic_authority'): ?>
+            <div id="road-status-section" class="content-section" style="display: none;">
+                <?php $road_status_mode = 'authority'; include __DIR__ . '/includes/road_status_panel.php'; ?>
+            </div>
+            <?php endif; ?>
+
             <div id="predictions-section" class="content-section" style="display: none;">
                 <div class="dashboard-card">
                     <div class="card-header">
@@ -882,8 +937,14 @@ switch ($user_type) {
 
     <?php if ($user_type === 'driver'): ?>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script>window.STRGS_ROAD_STATUS_MODE = 'view';</script>
+    <script src="static/road-status.js"></script>
     <script src="static/driver-dashboard.js"></script>
     <?php else: ?>
+    <?php if ($user_type === 'traffic_authority'): ?>
+    <script>window.STRGS_ROAD_STATUS_MODE = 'authority';</script>
+    <script src="static/road-status.js"></script>
+    <?php endif; ?>
     <script>
         const STRGS_USER_TYPE = <?php echo json_encode($user_type); ?>;
         const STRGS_NAV_LABELS = <?php echo json_encode(array_column($nav_sections, 'label', 'id')); ?>;
@@ -957,9 +1018,10 @@ switch ($user_type) {
                 // Update page title
                 const titles = {
                     'dashboard': 'Smart Traffic Route Guidance System',
-                    'predictions': STRGS_USER_TYPE === 'driver' ? 'Route Guidance' : (STRGS_USER_TYPE === 'traffic_authority' ? 'Update Road Status' : 'Route Analysis'),
+                    'road-status': 'Road Status — Remera Sector',
+                    'predictions': STRGS_USER_TYPE === 'driver' ? 'Route Guidance' : (STRGS_USER_TYPE === 'traffic_authority' ? 'Enter Road Data' : 'Route Analysis'),
                     'analytics': STRGS_USER_TYPE === 'driver' ? 'Road Status' : (STRGS_USER_TYPE === 'traffic_authority' ? 'Report Incidents' : 'System Settings'),
-                    'reports': STRGS_USER_TYPE === 'traffic_authority' ? 'Monitor Roads' : 'Reports & Analytics',
+                    'reports': STRGS_USER_TYPE === 'traffic_authority' ? 'Reports' : 'Reports & Analytics',
                     'settings': 'User Management'
                 };
                 $('#pageTitle').text(titles[section] || STRGS_NAV_LABELS[section] || 'Smart Traffic Route Guidance System');
@@ -967,9 +1029,18 @@ switch ($user_type) {
                 // Show/hide sections
                 $('.content-section').hide();
                 $(`#${section}-section`).show();
+
+                if (section === 'road-status' && window.STRGSRoadStatus) {
+                    STRGSRoadStatus.load(true);
+                    STRGSRoadStatus.startRefresh();
+                } else if (window.STRGSRoadStatus) {
+                    STRGSRoadStatus.stopRefresh();
+                }
                 
                 // Load section content via AJAX
-                loadSectionContent(section);
+                if (section !== 'road-status') {
+                    loadSectionContent(section);
+                }
             });
         }
 
@@ -1551,10 +1622,11 @@ switch ($user_type) {
         function initializeQuickActions() {
             $('#newPrediction').on('click', function(e) {
                 e.preventDefault();
-                $('.nav-link[data-section="predictions"]').click();
+                const target = STRGS_USER_TYPE === 'traffic_authority' ? 'road-status' : 'predictions';
+                $('.nav-link[data-section="' + target + '"]').click();
                 const msg = STRGS_USER_TYPE === 'driver'
                     ? 'Route guidance is ready. Click "Get Route Guidance" to find the best route.'
-                    : 'Road status update is ready. Click "Update Road Status" to submit changes.';
+                    : 'Road Status is ready. Use Enter / Update Road Data to submit field readings.';
                 showAlert(msg, 'success');
             });
 
@@ -1572,7 +1644,7 @@ switch ($user_type) {
 
             $('#viewReports').on('click', function(e) {
                 e.preventDefault();
-                const target = STRGS_USER_TYPE === 'driver' ? 'analytics' : 'reports';
+                const target = STRGS_USER_TYPE === 'traffic_authority' ? 'road-status' : (STRGS_USER_TYPE === 'driver' ? 'analytics' : 'reports');
                 $('.nav-link[data-section="' + target + '"]').click();
             });
         }
