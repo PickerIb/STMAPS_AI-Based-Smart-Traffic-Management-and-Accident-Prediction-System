@@ -324,15 +324,101 @@ class DriverRouteService
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function countDriverNotifications(int $hours = 168): int
+    public function countDriverNotifications(int $userId, int $hours = 168): int
     {
-        return count($this->buildDriverNotificationPool($hours));
+        return $this->countUnreadDriverNotifications($userId, $hours);
     }
 
-    public function getDriverNotifications(int $limit = 30, int $offset = 0, int $hours = 168): array
+    public function countUnreadDriverNotifications(int $userId, int $hours = 168): int
     {
         $pool = $this->buildDriverNotificationPool($hours);
+        if ($pool === []) {
+            return 0;
+        }
+        $readKeys = $this->getDriverReadNotificationKeys($userId);
+        $unread = 0;
+        foreach ($pool as $item) {
+            if (empty($readKeys[(string)($item['id'] ?? '')])) {
+                $unread++;
+            }
+        }
+        return $unread;
+    }
+
+    public function getDriverNotifications(int $userId, int $limit = 30, int $offset = 0, int $hours = 168): array
+    {
+        $pool = $this->buildDriverNotificationPool($hours);
+        $pool = $this->applyReadStatusToNotifications($pool, $userId);
         return array_slice($pool, $offset, $limit);
+    }
+
+    public function markDriverNotificationsRead(int $userId, array $notificationKeys): array
+    {
+        $this->ensureDriverNotificationReadsTable();
+        $keys = array_values(array_unique(array_filter(array_map('strval', $notificationKeys))));
+        if ($keys === []) {
+            return ['marked' => 0];
+        }
+
+        $stmt = $this->conn->prepare(
+            'INSERT IGNORE INTO driver_notification_reads (user_id, notification_key, read_at)
+             VALUES (:uid, :key, NOW())'
+        );
+        $marked = 0;
+        foreach ($keys as $key) {
+            $stmt->execute([':uid' => $userId, ':key' => $key]);
+            $marked += $stmt->rowCount();
+        }
+
+        return ['marked' => $marked];
+    }
+
+    private function ensureDriverNotificationReadsTable(): void
+    {
+        static $ready = false;
+        if ($ready) {
+            return;
+        }
+        $this->conn->exec(
+            'CREATE TABLE IF NOT EXISTS `driver_notification_reads` (
+              `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+              `user_id` int(10) UNSIGNED NOT NULL,
+              `notification_key` varchar(64) NOT NULL,
+              `read_at` datetime NOT NULL DEFAULT current_timestamp(),
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uq_driver_notification_read` (`user_id`, `notification_key`),
+              KEY `idx_driver_notification_reads_user` (`user_id`),
+              CONSTRAINT `fk_driver_notification_reads_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+        );
+        $ready = true;
+    }
+
+    private function getDriverReadNotificationKeys(int $userId): array
+    {
+        $this->ensureDriverNotificationReadsTable();
+        $stmt = $this->conn->prepare(
+            'SELECT notification_key FROM driver_notification_reads WHERE user_id = :uid'
+        );
+        $stmt->execute([':uid' => $userId]);
+        $keys = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $key) {
+            $keys[(string)$key] = true;
+        }
+        return $keys;
+    }
+
+    private function applyReadStatusToNotifications(array $items, int $userId): array
+    {
+        if ($items === []) {
+            return $items;
+        }
+        $readKeys = $this->getDriverReadNotificationKeys($userId);
+        foreach ($items as &$item) {
+            $item['is_read'] = !empty($readKeys[(string)($item['id'] ?? '')]);
+        }
+        unset($item);
+        return $items;
     }
 
     private function buildDriverNotificationPool(int $hours = 168): array
@@ -1428,5 +1514,560 @@ class DriverRouteService
             'per_page' => $perPage,
             'total_pages' => $totalPages,
         ];
+    }
+
+    public function getAuthorityDashboardStats(int $userId): array
+    {
+        $summary = $this->getRoadStatusSummary();
+
+        $stmt = $this->conn->prepare(
+            "SELECT action, COUNT(*) AS cnt FROM audit_log
+             WHERE user_id = :uid
+             GROUP BY action"
+        );
+        $stmt->execute([':uid' => $userId]);
+        $byAction = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $byAction[$row['action']] = (int)$row['cnt'];
+        }
+
+        $alertStmt = $this->conn->query(
+            "SELECT type, COUNT(*) AS cnt FROM alerts
+             WHERE alert_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+             GROUP BY type"
+        );
+        $alertsByType = ['congestion' => 0, 'incident' => 0, 'road_blockage' => 0, 'system' => 0];
+        foreach ($alertStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $alertsByType[$row['type']] = (int)$row['cnt'];
+        }
+
+        $readingStmt = $this->conn->query(
+            "SELECT COUNT(*) AS cnt FROM traffic_readings
+             WHERE source = 'traffic_police'
+               AND reading_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
+        );
+        $policeReadings = (int)$readingStmt->fetch(PDO::FETCH_ASSOC)['cnt'];
+
+        $accStmt = $this->conn->query(
+            "SELECT COUNT(*) AS cnt FROM accidents
+             WHERE accident_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
+        );
+        $accidentTotal = (int)$accStmt->fetch(PDO::FETCH_ASSOC)['cnt'];
+
+        return [
+            'road_updates' => $policeReadings,
+            'my_road_updates' => (int)($byAction['road_status_update'] ?? 0),
+            'accident_reports' => max($accidentTotal, $alertsByType['incident']),
+            'congestion_reports' => $alertsByType['congestion'],
+            'road_blockages' => $alertsByType['road_blockage'],
+            'maintenance_alerts' => $alertsByType['system'],
+            'sector_summary' => $summary,
+            'unacknowledged_alerts' => $this->countUnacknowledgedAlerts(),
+        ];
+    }
+
+    public function countUnacknowledgedAlerts(): int
+    {
+        $stmt = $this->conn->query(
+            "SELECT COUNT(*) AS cnt FROM alerts WHERE is_acknowledged = 0"
+        );
+        return (int)$stmt->fetch(PDO::FETCH_ASSOC)['cnt'];
+    }
+
+    public function getAuthorityRecentActivity(int $userId, int $limit = 10): array
+    {
+        return $this->getAuthorityActivityPaginated($userId, 1, $limit)['items'];
+    }
+
+    public function getAuthorityActivityPaginated(int $userId, int $page = 1, int $perPage = 15): array
+    {
+        $page = max(1, $page);
+        $perPage = max(5, min(50, $perPage));
+        $offset = ($page - 1) * $perPage;
+
+        $countStmt = $this->conn->prepare('SELECT COUNT(*) AS total FROM audit_log WHERE user_id = :uid');
+        $countStmt->execute([':uid' => $userId]);
+        $total = (int)$countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+        $stmt = $this->conn->prepare(
+            "SELECT id, action, table_name, record_id, new_values, created_at
+             FROM audit_log
+             WHERE user_id = :uid
+             ORDER BY created_at DESC
+             LIMIT :lim OFFSET :off"
+        );
+        $stmt->bindValue(':uid', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
+        $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $items = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $meta = json_decode((string)($row['new_values'] ?? '{}'), true) ?: [];
+            $items[] = [
+                'id' => (int)$row['id'],
+                'action' => $row['action'],
+                'label' => $this->formatAuditActionLabel($row['action'], $meta),
+                'details' => $this->formatAuditActionDetails($meta),
+                'created_at' => $row['created_at'],
+            ];
+        }
+
+        return [
+            'items' => $items,
+            'total' => $total,
+            'page' => $page,
+            'per_page' => $perPage,
+            'total_pages' => $total > 0 ? (int)ceil($total / $perPage) : 1,
+        ];
+    }
+
+    private function formatAuditActionLabel(string $action, array $meta): string
+    {
+        return match ($action) {
+            'road_status_update' => 'Road status updated',
+            'incident_report' => 'Accident reported',
+            'alert_report' => 'Traffic alert sent',
+            'alert_cleared' => 'Alert cleared',
+            'accident_resolved' => 'Accident resolved',
+            default => ucwords(str_replace('_', ' ', $action)),
+        };
+    }
+
+    private function formatAuditActionDetails(array $meta): string
+    {
+        if (!empty($meta['segment_name'])) {
+            return (string)$meta['segment_name'];
+        }
+        if (!empty($meta['message'])) {
+            return (string)$meta['message'];
+        }
+        if (!empty($meta['cause'])) {
+            return (string)$meta['cause'];
+        }
+        return 'Remera Sector';
+    }
+
+    public function reportAccident(int $userId, array $data): array
+    {
+        $segmentId = (int)($data['segment_id'] ?? 0);
+        $accidentTime = trim((string)($data['accident_time'] ?? ''));
+        $severity = strtolower(trim((string)($data['severity'] ?? 'minor')));
+        $cause = trim((string)($data['cause'] ?? ''));
+        $notes = trim((string)($data['notes'] ?? ''));
+        $vehicles = isset($data['vehicles_involved']) ? (int)$data['vehicles_involved'] : null;
+        $injuries = isset($data['injuries']) ? (int)$data['injuries'] : null;
+        $fatalities = isset($data['fatalities']) ? (int)$data['fatalities'] : null;
+
+        if ($segmentId <= 0) {
+            return ['success' => false, 'message' => 'Please select a road location.'];
+        }
+        if ($accidentTime === '') {
+            return ['success' => false, 'message' => 'Accident time is required.'];
+        }
+        if (!in_array($severity, ['minor', 'moderate', 'severe', 'fatal'], true)) {
+            $severity = 'minor';
+        }
+
+        $segment = $this->getSegmentById($segmentId);
+        if (!$segment) {
+            return ['success' => false, 'message' => 'Selected road was not found.'];
+        }
+
+        $accidentTimeDb = $this->normalizeDateTimeInput($accidentTime);
+        if ($accidentTimeDb === null) {
+            return ['success' => false, 'message' => 'Accident time is not valid.'];
+        }
+
+        $message = $cause !== '' ? $cause : 'Accident reported on ' . $segment['name'];
+        $alertSeverity = in_array($severity, ['severe', 'fatal'], true) ? 'critical' : 'warning';
+
+        $stmt = $this->conn->prepare(
+            "INSERT INTO accidents
+            (segment_id, accident_time, severity, cause, vehicles_involved, injuries, fatalities, notes, reported_by)
+            VALUES (:segment_id, :accident_time, :severity, :cause, :vehicles, :injuries, :fatalities, :notes, :reported_by)"
+        );
+        $stmt->execute([
+            ':segment_id' => $segmentId,
+            ':accident_time' => $accidentTimeDb,
+            ':severity' => $severity,
+            ':cause' => $cause !== '' ? $cause : null,
+            ':vehicles' => $vehicles,
+            ':injuries' => $injuries,
+            ':fatalities' => $fatalities,
+            ':notes' => $notes !== '' ? $notes : null,
+            ':reported_by' => $userId,
+        ]);
+        $accidentId = (int)$this->conn->lastInsertId();
+
+        $alertStmt = $this->conn->prepare(
+            "INSERT INTO alerts (segment_id, alert_time, type, severity, message, is_acknowledged)
+             VALUES (:segment_id, :alert_time, 'incident', :severity, :message, 0)"
+        );
+        $alertStmt->execute([
+            ':segment_id' => $segmentId,
+            ':alert_time' => $accidentTimeDb,
+            ':severity' => $alertSeverity,
+            ':message' => mb_substr($message, 0, 255),
+        ]);
+
+        $this->writeAuditLog($userId, 'incident_report', 'accidents', $accidentId, [
+            'segment_id' => $segmentId,
+            'segment_name' => $segment['name'],
+            'severity' => $severity,
+            'cause' => $cause,
+            'notes' => $notes,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Accident report saved. Drivers will be notified.',
+            'accident_id' => $accidentId,
+        ];
+    }
+
+    public function reportTrafficAlert(int $userId, array $data): array
+    {
+        $segmentId = (int)($data['segment_id'] ?? 0);
+        $type = strtolower(trim((string)($data['type'] ?? 'congestion')));
+        $message = trim((string)($data['message'] ?? ''));
+        $severity = strtolower(trim((string)($data['severity'] ?? 'warning')));
+        $alertTime = trim((string)($data['alert_time'] ?? ''));
+
+        $allowedTypes = ['congestion', 'road_blockage', 'system', 'incident'];
+        if (!in_array($type, $allowedTypes, true)) {
+            return ['success' => false, 'message' => 'Invalid alert type.'];
+        }
+        if ($segmentId <= 0) {
+            return ['success' => false, 'message' => 'Please select a road.'];
+        }
+        if ($message === '') {
+            return ['success' => false, 'message' => 'Please enter alert details.'];
+        }
+        if (!in_array($severity, ['info', 'warning', 'critical'], true)) {
+            $severity = 'warning';
+        }
+
+        $segment = $this->getSegmentById($segmentId);
+        if (!$segment) {
+            return ['success' => false, 'message' => 'Selected road was not found.'];
+        }
+
+        $alertTimeDb = $alertTime !== '' ? $this->normalizeDateTimeInput($alertTime) : date('Y-m-d H:i:s');
+        if ($alertTimeDb === null) {
+            return ['success' => false, 'message' => 'Alert time is not valid.'];
+        }
+
+        $stmt = $this->conn->prepare(
+            "INSERT INTO alerts (segment_id, alert_time, type, severity, message, is_acknowledged)
+             VALUES (:segment_id, :alert_time, :type, :severity, :message, 0)"
+        );
+        $stmt->execute([
+            ':segment_id' => $segmentId,
+            ':alert_time' => $alertTimeDb,
+            ':type' => $type,
+            ':severity' => $severity,
+            ':message' => mb_substr($message, 0, 255),
+        ]);
+        $alertId = (int)$this->conn->lastInsertId();
+
+        $this->writeAuditLog($userId, 'alert_report', 'alerts', $alertId, [
+            'segment_id' => $segmentId,
+            'segment_name' => $segment['name'],
+            'type' => $type,
+            'severity' => $severity,
+            'message' => $message,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Alert sent to drivers successfully.',
+            'alert_id' => $alertId,
+        ];
+    }
+
+    public function acknowledgeAlert(int $userId, int $alertId): array
+    {
+        $stmt = $this->conn->prepare(
+            "UPDATE alerts
+             SET is_acknowledged = 1, acknowledged_by = :uid, acknowledged_at = NOW()
+             WHERE id = :id"
+        );
+        $stmt->execute([':uid' => $userId, ':id' => $alertId]);
+        if ($stmt->rowCount() === 0) {
+            return ['success' => false, 'message' => 'Alert not found.'];
+        }
+
+        $this->writeAuditLog($userId, 'alert_cleared', 'alerts', $alertId, [
+            'alert_id' => $alertId,
+            'message' => 'Alert marked as acknowledged',
+        ]);
+
+        return ['success' => true, 'message' => 'Alert marked as acknowledged.'];
+    }
+
+    public function resolveAccident(int $userId, int $accidentId, string $resolutionNote = ''): array
+    {
+        $stmt = $this->conn->prepare(
+            'SELECT a.id, a.segment_id, a.notes, rs.name AS segment_name
+             FROM accidents a
+             INNER JOIN road_segments rs ON rs.id = a.segment_id
+             WHERE a.id = :id LIMIT 1'
+        );
+        $stmt->execute([':id' => $accidentId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return ['success' => false, 'message' => 'Accident record not found.'];
+        }
+
+        $note = trim($resolutionNote);
+        $existing = trim((string)($row['notes'] ?? ''));
+        $combined = $existing;
+        if ($note !== '') {
+            $combined = $existing !== '' ? $existing . ' | RESOLVED: ' . $note : 'RESOLVED: ' . $note;
+        } elseif ($existing === '' || stripos($existing, 'resolved') === false) {
+            $combined = 'RESOLVED by traffic police.';
+        }
+
+        $up = $this->conn->prepare('UPDATE accidents SET notes = :notes WHERE id = :id');
+        $up->execute([':notes' => $combined, ':id' => $accidentId]);
+
+        $this->writeAuditLog($userId, 'accident_resolved', 'accidents', $accidentId, [
+            'segment_id' => (int)$row['segment_id'],
+            'segment_name' => $row['segment_name'],
+            'message' => $note !== '' ? $note : 'Accident marked as resolved',
+        ]);
+
+        return ['success' => true, 'message' => 'Accident marked as resolved.'];
+    }
+
+    public function getAuthorityAlerts(int $limit = 40, int $offset = 0): array
+    {
+        $stmt = $this->conn->prepare(
+            "SELECT a.id, a.alert_time, a.type, a.severity, a.message, a.is_acknowledged,
+                    rs.name AS segment_name, rs.zone
+             FROM alerts a
+             LEFT JOIN road_segments rs ON rs.id = a.segment_id
+             ORDER BY a.is_acknowledged ASC, a.alert_time DESC
+             LIMIT :lim OFFSET :off"
+        );
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function getAccidentsList(int $limit = 30, int $offset = 0): array
+    {
+        $stmt = $this->conn->prepare(
+            "SELECT a.id, a.accident_time, a.severity, a.cause, a.notes, a.vehicles_involved,
+                    a.injuries, a.fatalities, rs.name AS segment_name, rs.zone
+             FROM accidents a
+             INNER JOIN road_segments rs ON rs.id = a.segment_id
+             ORDER BY a.accident_time DESC
+             LIMIT :lim OFFSET :off"
+        );
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row['is_resolved'] = stripos((string)($row['notes'] ?? ''), 'resolved') !== false;
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public function getAuthorityReports(string $period = 'daily'): array
+    {
+        $interval = match ($period) {
+            'weekly' => 7,
+            'monthly' => 30,
+            default => 1,
+        };
+
+        $readingStmt = $this->conn->prepare(
+            "SELECT DATE(reading_time) AS day, COUNT(*) AS cnt
+             FROM traffic_readings
+             WHERE source = 'traffic_police'
+               AND reading_time >= DATE_SUB(NOW(), INTERVAL :days DAY)
+             GROUP BY DATE(reading_time)
+             ORDER BY day ASC"
+        );
+        $readingStmt->bindValue(':days', $interval === 1 ? 1 : ($interval === 7 ? 7 : 30), PDO::PARAM_INT);
+        $readingStmt->execute();
+        $readings = $readingStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $alertStmt = $this->conn->prepare(
+            "SELECT type, COUNT(*) AS cnt
+             FROM alerts
+             WHERE alert_time >= DATE_SUB(NOW(), INTERVAL :days DAY)
+             GROUP BY type"
+        );
+        $alertStmt->bindValue(':days', $interval === 1 ? 1 : ($interval === 7 ? 7 : 30), PDO::PARAM_INT);
+        $alertStmt->execute();
+        $alerts = $alertStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $accStmt = $this->conn->prepare(
+            "SELECT COUNT(*) AS cnt FROM accidents
+             WHERE accident_time >= DATE_SUB(NOW(), INTERVAL :days DAY)"
+        );
+        $accStmt->bindValue(':days', $interval === 1 ? 1 : ($interval === 7 ? 7 : 30), PDO::PARAM_INT);
+        $accStmt->execute();
+        $accidents = (int)$accStmt->fetch(PDO::FETCH_ASSOC)['cnt'];
+
+        return [
+            'period' => $period,
+            'road_readings' => $readings,
+            'alerts_by_type' => $alerts,
+            'accident_count' => $accidents,
+            'summary' => $this->getAuthorityDashboardStats(0),
+        ];
+    }
+
+    public function markRoadStatus(int $userId, array $data): array
+    {
+        $segmentId = (int)($data['segment_id'] ?? 0);
+        $status = strtolower(trim((string)($data['road_status'] ?? '')));
+        $congestionLevel = strtolower(trim((string)($data['congestion_level'] ?? 'low')));
+        $note = trim((string)($data['status_note'] ?? ''));
+
+        $validStatuses = ['normal', 'congested', 'blocked', 'maintenance'];
+        $validCongestion = ['low', 'moderate', 'high', 'severe'];
+
+        if ($segmentId <= 0) {
+            return ['success' => false, 'message' => 'Please select a road.'];
+        }
+        if (!in_array($status, $validStatuses, true)) {
+            return ['success' => false, 'message' => 'Invalid road status.'];
+        }
+        if (!in_array($congestionLevel, $validCongestion, true)) {
+            $congestionLevel = 'low';
+        }
+        if ($status === 'blocked') {
+            $congestionLevel = 'severe';
+        }
+
+        $segment = $this->getSegmentById($segmentId);
+        if (!$segment) {
+            return ['success' => false, 'message' => 'Selected road was not found in Remera Sector.'];
+        }
+
+        $speedLimit = (int)($segment['speed_limit_kmh'] ?? 50);
+        $metrics = $this->trafficMetricsForOfficerUpdate($status, $congestionLevel, $speedLimit);
+        $readingData = [
+            'segment_id' => $segmentId,
+            'reading_time' => date('Y-m-d\TH:i'),
+            'vehicle_count' => $metrics['vehicle_count'],
+            'avg_speed_kmh' => $metrics['avg_speed_kmh'],
+            'density_veh_per_km' => max(10, (int)round($metrics['vehicle_count'] / 2)),
+            'weather' => 'clear',
+            'status_note' => '',
+        ];
+
+        $result = $this->submitTrafficReading($userId, $readingData);
+        if (empty($result['success'])) {
+            return $result;
+        }
+
+        if ($status === 'blocked') {
+            $this->reportTrafficAlert($userId, [
+                'segment_id' => $segmentId,
+                'type' => 'road_blockage',
+                'severity' => 'critical',
+                'message' => $note !== '' ? $note : 'Road marked blocked — ' . $segment['name'],
+                'alert_time' => date('Y-m-d\TH:i'),
+            ]);
+        } elseif ($status === 'maintenance') {
+            $this->reportTrafficAlert($userId, [
+                'segment_id' => $segmentId,
+                'type' => 'system',
+                'severity' => 'warning',
+                'message' => $note !== '' ? $note : 'Road under maintenance — ' . $segment['name'],
+                'alert_time' => date('Y-m-d\TH:i'),
+            ]);
+        } elseif ($note !== '') {
+            $this->reportTrafficAlert($userId, [
+                'segment_id' => $segmentId,
+                'type' => 'congestion',
+                'severity' => in_array($congestionLevel, ['high', 'severe'], true) ? 'warning' : 'info',
+                'message' => $note,
+                'alert_time' => date('Y-m-d\TH:i'),
+            ]);
+        } elseif ($status === 'congested') {
+            $this->reportTrafficAlert($userId, [
+                'segment_id' => $segmentId,
+                'type' => 'congestion',
+                'severity' => in_array($congestionLevel, ['high', 'severe'], true) ? 'warning' : 'info',
+                'message' => 'Road marked congested — ' . $segment['name'],
+                'alert_time' => date('Y-m-d\TH:i'),
+            ]);
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Road status updated for ' . $segment['name'] . '.',
+        ];
+    }
+
+    private function trafficMetricsForOfficerUpdate(string $status, string $congestionLevel, int $speedLimit): array
+    {
+        $limit = max($speedLimit, 40);
+        $map = [
+            'low' => ['vehicle_count' => 45, 'avg_speed_kmh' => round($limit * 0.80, 1)],
+            'moderate' => ['vehicle_count' => 95, 'avg_speed_kmh' => round($limit * 0.55, 1)],
+            'high' => ['vehicle_count' => 165, 'avg_speed_kmh' => round($limit * 0.35, 1)],
+            'severe' => ['vehicle_count' => 200, 'avg_speed_kmh' => round($limit * 0.15, 1)],
+        ];
+
+        if ($status === 'blocked') {
+            return ['vehicle_count' => 0, 'avg_speed_kmh' => 0.0];
+        }
+        if ($status === 'maintenance') {
+            return ['vehicle_count' => 25, 'avg_speed_kmh' => round($limit * 0.25, 1)];
+        }
+        if ($status === 'normal' && $congestionLevel === 'low') {
+            return $map['low'];
+        }
+
+        return $map[$congestionLevel] ?? $map['low'];
+    }
+
+    private function getSegmentById(int $segmentId): ?array
+    {
+        $stmt = $this->conn->prepare(
+            'SELECT id, name, zone, speed_limit_kmh FROM road_segments WHERE id = :id AND is_active = 1 AND zone = :zone LIMIT 1'
+        );
+        $stmt->execute([':id' => $segmentId, ':zone' => self::STUDY_ZONE]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    private function normalizeDateTimeInput(string $value): ?string
+    {
+        $readingTimeDb = trim(str_replace('T', ' ', $value));
+        if (strlen($readingTimeDb) === 16) {
+            $readingTimeDb .= ':00';
+        }
+        $ts = self::parseReadingTimestamp($readingTimeDb);
+        if ($ts === null) {
+            return null;
+        }
+        return self::formatLocalDateTime($ts, 'Y-m-d H:i:s');
+    }
+
+    private function writeAuditLog(int $userId, string $action, string $table, ?int $recordId, array $payload): void
+    {
+        $stmt = $this->conn->prepare(
+            'INSERT INTO audit_log (user_id, action, table_name, record_id, new_values, created_at)
+             VALUES (:user_id, :action, :table_name, :record_id, :new_values, NOW())'
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':action' => $action,
+            ':table_name' => $table,
+            ':record_id' => $recordId,
+            ':new_values' => json_encode($payload),
+        ]);
     }
 }

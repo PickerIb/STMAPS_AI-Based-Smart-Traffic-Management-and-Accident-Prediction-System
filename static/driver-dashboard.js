@@ -1303,9 +1303,12 @@
         const title = item.title || 'Notification';
         const time = item.time_label || formatRoadUpdateTime(item.alert_time);
         const kindClass = item.kind === 'road_update' ? 'notification-road-update' : 'notification-alert';
-        return '<div class="notification-item ' + kindClass + ' alert-item ' + esc(item.severity || 'info') + '">' +
+        const unreadClass = item.is_read ? '' : ' notification-unread';
+        return '<div class="notification-item' + unreadClass + ' ' + kindClass + ' alert-item ' + esc(item.severity || 'info') + '" data-notification-id="' + esc(item.id || '') + '">' +
             '<div class="d-flex justify-content-between align-items-start gap-2">' +
-            '<div class="notification-title-wrap"><i class="fas ' + notificationIcon(item) + ' me-2"></i><strong>' + esc(title) + '</strong></div>' +
+            '<div class="notification-title-wrap"><i class="fas ' + notificationIcon(item) + ' me-2"></i><strong>' + esc(title) + '</strong>' +
+            (!item.is_read ? '<span class="notification-new-badge">New</span>' : '') +
+            '</div>' +
             '<small class="text-muted flex-shrink-0">' + esc(time) + '</small></div>' +
             '<div class="notification-message">' + esc(item.message) + '</div>' +
             (item.segment_name ? '<small class="text-muted">' + esc(item.segment_name) + '</small>' : '') +
@@ -1328,7 +1331,8 @@
     function loadNotificationCount() {
         post('driver_alerts', { limit: 1, offset: 0 }).done(function (res) {
             if (res.success) {
-                updateNotificationBadge(res.count || 0);
+                const unread = res.unread_count != null ? res.unread_count : res.count || 0;
+                updateNotificationBadge(unread);
             }
         });
     }
@@ -1344,6 +1348,20 @@
             clearInterval(notificationPollTimer);
             notificationPollTimer = null;
         }
+    }
+
+    function markNotificationsRead(items) {
+        const ids = (items || []).map(function (item) { return item.id; }).filter(Boolean);
+        if (!ids.length) {
+            return;
+        }
+        post('driver_mark_notifications_read', { notification_ids: JSON.stringify(ids) }).done(function (res) {
+            if (!res.success) {
+                return;
+            }
+            updateNotificationBadge(res.unread_count != null ? res.unread_count : 0);
+            $('#driverAlertsList .notification-item').removeClass('notification-unread').find('.notification-new-badge').remove();
+        });
     }
 
     function loadAlerts(target, forceRefresh) {
@@ -1362,11 +1380,13 @@
                 return;
             }
             const items = res.notifications || res.alerts || [];
-            updateNotificationBadge(res.count || items.length);
+            const unread = res.unread_count != null ? res.unread_count : items.filter(function (i) { return !i.is_read; }).length;
+            updateNotificationBadge(unread);
             if (!items.length) {
                 $el.html('<p class="text-muted mb-0">No notifications yet. Road updates from traffic police will appear here.</p>');
             } else {
                 $el.html(items.map(renderNotificationItem).join(''));
+                markNotificationsRead(items);
             }
             $('#alertsLastRefreshed').text('Updated ' + new Date().toLocaleTimeString());
         }).fail(function () {

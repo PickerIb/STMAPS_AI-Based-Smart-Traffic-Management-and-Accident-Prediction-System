@@ -1392,6 +1392,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         case 'driver_road_status':
         case 'authority_submit_road_reading':
         case 'driver_alerts':
+        case 'driver_mark_notifications_read':
         case 'driver_search_destinations':
         case 'driver_segments_map':
         case 'driver_recent_updates':
@@ -1400,6 +1401,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         case 'driver_travel_history':
             require_once __DIR__ . '/includes/driver_api_handlers.php';
             handleDriverApiAction($_POST['action']);
+            break;
+
+        case 'authority_home':
+        case 'authority_profile_get':
+        case 'authority_profile_update':
+        case 'authority_upload_avatar':
+        case 'authority_mark_road_status':
+        case 'authority_report_accident':
+        case 'authority_report_alert':
+        case 'authority_alerts':
+        case 'authority_ack_alert':
+        case 'authority_resolve_accident':
+        case 'authority_accidents':
+        case 'authority_activity':
+        case 'authority_reports':
+        case 'driver_segments_map':
+            require_once __DIR__ . '/includes/authority_api_handlers.php';
+            handleAuthorityApiAction($_POST['action']);
             break;
 
         case 'request_password_reset':

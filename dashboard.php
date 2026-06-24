@@ -5,6 +5,9 @@ session_start();
 // Require user to be logged in
 requireLogin();
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 $user_name = $_SESSION['user_name'] ?? 'User';
 $user_email = $_SESSION['user_email'] ?? 'user@example.com';
 $user_type = $_SESSION['user_type'] ?? 'driver';
@@ -26,9 +29,12 @@ switch ($user_type) {
         $nav_sections = [
             ['id' => 'dashboard', 'icon' => 'fa-tachometer-alt', 'label' => 'Dashboard'],
             ['id' => 'road-status', 'icon' => 'fa-road', 'label' => 'Road Status'],
-            ['id' => 'predictions', 'icon' => 'fa-edit', 'label' => 'Enter Road Data'],
-            ['id' => 'analytics', 'icon' => 'fa-exclamation-triangle', 'label' => 'Report Incidents'],
+            ['id' => 'incidents', 'icon' => 'fa-triangle-exclamation', 'label' => 'Incidents'],
+            ['id' => 'map-monitoring', 'icon' => 'fa-map', 'label' => 'Map Monitor'],
+            ['id' => 'notifications', 'icon' => 'fa-bell', 'label' => 'Notifications'],
             ['id' => 'reports', 'icon' => 'fa-chart-pie', 'label' => 'Reports'],
+            ['id' => 'activity-history', 'icon' => 'fa-history', 'label' => 'Activity'],
+            ['id' => 'profile', 'icon' => 'fa-user', 'label' => 'Profile'],
         ];
         break;
     case 'administrator':
@@ -44,6 +50,11 @@ switch ($user_type) {
             ['id' => 'dashboard', 'icon' => 'fa-tachometer-alt', 'label' => 'Dashboard'],
         ];
 }
+
+$assetV = static function (string $relPath): string {
+    $full = __DIR__ . '/' . ltrim($relPath, '/');
+    return $relPath . '?v=' . (is_file($full) ? filemtime($full) : time());
+};
 ?>
 
 <!DOCTYPE html>
@@ -67,9 +78,11 @@ switch ($user_type) {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
     <?php if ($user_type === 'driver'): ?>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-    <link rel="stylesheet" href="static/driver-dashboard.css">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($assetV('static/driver-dashboard.css')); ?>">
     <?php elseif ($user_type === 'traffic_authority'): ?>
-    <link rel="stylesheet" href="static/driver-dashboard.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($assetV('static/driver-dashboard.css')); ?>">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($assetV('static/authority-dashboard.css')); ?>">
     <?php endif; ?>
 
     <style>
@@ -711,7 +724,7 @@ switch ($user_type) {
         <div class="top-bar">
             <h1 class="page-title" id="pageTitle">Smart Traffic Route Guidance System</h1>
             <div class="user-menu">
-                <?php if ($user_type === 'driver'): ?>
+                <?php if (in_array($user_type, ['driver', 'traffic_authority'], true)): ?>
                 <button type="button" class="header-notify-btn" id="btnHeaderNotifications" title="Notifications" aria-label="Notifications">
                     <i class="fas fa-bell"></i>
                     <span class="header-notify-badge" id="headerNotifyBadge" style="display:none">0</span>
@@ -736,6 +749,8 @@ switch ($user_type) {
         <div class="content-area">
             <?php if ($user_type === 'driver'): ?>
                 <?php include __DIR__ . '/includes/driver_dashboard.php'; ?>
+            <?php elseif ($user_type === 'traffic_authority'): ?>
+                <?php include __DIR__ . '/includes/traffic_authority_dashboard.php'; ?>
             <?php else: ?>
             <!-- Dashboard Section -->
             <div id="dashboard-section" class="content-section">
@@ -864,13 +879,8 @@ switch ($user_type) {
                 </div>
             </div>
 
-            <!-- Other Sections (initially hidden) -->
-            <?php if ($user_type === 'traffic_authority'): ?>
-            <div id="road-status-section" class="content-section" style="display: none;">
-                <?php $road_status_mode = 'authority'; include __DIR__ . '/includes/road_status_panel.php'; ?>
-            </div>
-            <?php endif; ?>
-
+            <!-- Other Sections (initially hidden) — Administrator only -->
+            <?php if ($user_type === 'administrator'): ?>
             <div id="predictions-section" class="content-section" style="display: none;">
                 <div class="dashboard-card">
                     <div class="card-header">
@@ -927,6 +937,7 @@ switch ($user_type) {
                 </div>
             </div>
             <?php endif; ?>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -938,13 +949,14 @@ switch ($user_type) {
     <?php if ($user_type === 'driver'): ?>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script>window.STRGS_ROAD_STATUS_MODE = 'view';</script>
-    <script src="static/road-status.js"></script>
-    <script src="static/driver-dashboard.js"></script>
-    <?php else: ?>
-    <?php if ($user_type === 'traffic_authority'): ?>
+    <script src="<?php echo htmlspecialchars($assetV('static/road-status.js')); ?>"></script>
+    <script src="<?php echo htmlspecialchars($assetV('static/driver-dashboard.js')); ?>"></script>
+    <?php elseif ($user_type === 'traffic_authority'): ?>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script>window.STRGS_ROAD_STATUS_MODE = 'authority';</script>
-    <script src="static/road-status.js"></script>
-    <?php endif; ?>
+    <script src="<?php echo htmlspecialchars($assetV('static/road-status.js')); ?>"></script>
+    <script src="<?php echo htmlspecialchars($assetV('static/authority-dashboard.js')); ?>"></script>
+    <?php else: ?>
     <script>
         const STRGS_USER_TYPE = <?php echo json_encode($user_type); ?>;
         const STRGS_NAV_LABELS = <?php echo json_encode(array_column($nav_sections, 'label', 'id')); ?>;

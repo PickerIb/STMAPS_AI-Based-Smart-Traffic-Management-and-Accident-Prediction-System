@@ -37,58 +37,11 @@ $is_authority = $road_status_mode === 'authority';
     <?php if ($is_authority): ?>
     <div class="dashboard-card mb-4 road-entry-card" id="roadEntryCard" style="display:none;">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h3 class="card-title mb-0"><i class="fas fa-clipboard-list"></i> Submit Road Information</h3>
+            <h3 class="card-title mb-0"><i class="fas fa-clipboard-list"></i> Update Road Status</h3>
             <span class="badge bg-dark">Traffic Police Entry</span>
         </div>
         <div class="card-body">
-            <form id="authorityRoadForm" class="road-entry-form">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label" for="authorityRoadSelect">Road <span class="text-danger">*</span></label>
-                        <select class="form-select" id="authorityRoadSelect" name="segment_id" required>
-                            <option value="" disabled selected>Select a road in Remera Sector…</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="authorityReadingTime">Reading Time <span class="text-danger">*</span></label>
-                        <input type="datetime-local" class="form-control" id="authorityReadingTime" name="reading_time" required>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="authorityWeather">Weather <span class="text-danger">*</span></label>
-                        <select class="form-select" id="authorityWeather" name="weather" required>
-                            <option value="">Select…</option>
-                            <option value="clear">Clear</option>
-                            <option value="cloudy">Cloudy</option>
-                            <option value="rain">Rain</option>
-                            <option value="fog">Fog</option>
-                            <option value="storm">Storm</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="authorityVehicles">Vehicles Observed <span class="text-danger">*</span></label>
-                        <input type="number" class="form-control" id="authorityVehicles" name="vehicle_count" min="0" max="200000" required placeholder="e.g. 120">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="authoritySpeed">Avg. Speed (km/h) <span class="text-danger">*</span></label>
-                        <input type="number" class="form-control" id="authoritySpeed" name="avg_speed_kmh" min="0" max="200" step="0.1" required placeholder="e.g. 28">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="authorityDensity">Density (veh/km) <span class="text-danger">*</span></label>
-                        <input type="number" class="form-control" id="authorityDensity" name="density_veh_per_km" min="0" max="500" step="0.1" required placeholder="e.g. 45">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="authorityStatusNote">Status / Reason</label>
-                        <input type="text" class="form-control" id="authorityStatusNote" name="status_note" maxlength="255" placeholder="e.g. Heavy queue near roundabout">
-                    </div>
-                    <div class="col-12">
-                        <button type="submit" class="btn btn-dark" id="btnSubmitRoadData">
-                            <i class="fas fa-save me-2"></i>Save Road Status
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary ms-2" id="btnClearRoadForm">Clear</button>
-                    </div>
-                </div>
-                <div id="authorityRoadFormMsg" class="mt-3"></div>
-            </form>
+            <div id="authorityRoadFormMount"></div>
         </div>
     </div>
     <?php endif; ?>
@@ -124,15 +77,10 @@ $is_authority = $road_status_mode === 'authority';
                         <th>Status</th>
                         <?php if ($is_authority): ?>
                         <th>Congestion</th>
-                        <th class="text-end">Avg. Speed</th>
-                        <th class="text-end">Vehicles</th>
-                        <?php else: ?>
-                        <th>Safe Travel Advice</th>
-                        <?php endif; ?>
-                        <?php if ($is_authority): ?>
-                        <th>Weather</th>
                         <th>Officer Notes</th>
                         <th class="text-end">Action</th>
+                        <?php else: ?>
+                        <th>Safe Travel Advice</th>
                         <?php endif; ?>
                     </tr>
                 </thead>

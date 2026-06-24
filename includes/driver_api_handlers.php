@@ -17,7 +17,7 @@ function driverApiDb(): PDO {
 }
 
 function handleDriverApiAction(string $action): void {
-    $roadStatusReadActions = ['driver_road_status'];
+    $roadStatusReadActions = ['driver_road_status', 'driver_segments_map'];
     $authorityWriteActions = ['authority_submit_road_reading'];
 
     if (in_array($action, $roadStatusReadActions, true)) {
@@ -57,8 +57,8 @@ function handleDriverApiAction(string $action): void {
                     ],
                     'traffic_summary' => $service->getRoadStatusSummary(),
                     'recent_updates' => $service->getRecentRoadUpdates(10),
-                    'notifications' => $service->getDriverNotifications(5, 0),
-                    'notification_count' => $service->countDriverNotifications(),
+                    'notifications' => $service->getDriverNotifications($userId, 5, 0),
+                    'notification_count' => $service->countDriverNotifications($userId),
                     'map_config' => $service->getRemeraMapConfig(),
                 ]);
                 break;
@@ -190,11 +190,27 @@ function handleDriverApiAction(string $action): void {
             case 'driver_alerts':
                 $limit = max(5, min(100, (int)($_POST['limit'] ?? 30)));
                 $offset = max(0, (int)($_POST['offset'] ?? 0));
+                $notifications = $service->getDriverNotifications($userId, $limit, $offset);
                 driverApiJson([
                     'success' => true,
-                    'notifications' => $service->getDriverNotifications($limit, $offset),
-                    'count' => $service->countDriverNotifications(),
-                    'alerts' => $service->getDriverNotifications($limit, $offset),
+                    'notifications' => $notifications,
+                    'count' => count($notifications),
+                    'unread_count' => $service->countDriverNotifications($userId),
+                    'alerts' => $notifications,
+                ]);
+                break;
+
+            case 'driver_mark_notifications_read':
+                $raw = $_POST['notification_ids'] ?? '[]';
+                $ids = is_array($raw) ? $raw : json_decode((string)$raw, true);
+                if (!is_array($ids)) {
+                    $ids = [];
+                }
+                $result = $service->markDriverNotificationsRead($userId, $ids);
+                driverApiJson([
+                    'success' => true,
+                    'marked' => $result['marked'],
+                    'unread_count' => $service->countDriverNotifications($userId),
                 ]);
                 break;
 

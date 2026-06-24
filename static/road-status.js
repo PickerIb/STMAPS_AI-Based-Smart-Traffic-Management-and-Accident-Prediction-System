@@ -291,7 +291,7 @@
 
     function renderRoadTable(filter) {
         const roads = getFilteredRoads(filter);
-        const colSpan = IS_AUTHORITY ? 8 : 3;
+        const colSpan = IS_AUTHORITY ? 5 : 3;
         const $tb = $('#driverRoadTable tbody').empty();
         $('#roadTableCountBadge').text(roads.length + ' road' + (roads.length === 1 ? '' : 's'));
 
@@ -306,10 +306,7 @@
             const updated = seg.updated_label || seg.reading_time_local || '';
             const authorityCells = IS_AUTHORITY
                 ? '<td class="road-congestion-col"><span class="congestion-chip congestion-' + esc(seg.congestion_level || 'low') + '">' +
-                  esc(formatCongestionLabel(seg.congestion_level)) + '</span></td>' +
-                  '<td class="text-end road-speed-col">' + formatSpeedCell(seg) + '</td>' +
-                  '<td class="text-end road-vehicles-col"><span class="road-vehicle-badge">' +
-                  (seg.vehicle_count != null ? seg.vehicle_count : '—') + '</span></td>'
+                  esc(formatCongestionLabel(seg.congestion_level)) + '</span></td>'
                 : '';
             const driverAdviceCell = !IS_AUTHORITY
                 ? '<td class="road-advice-col"><span class="safe-travel-advice safe-travel-' + esc(seg.safe_travel_tone || 'safe') + '">' +
@@ -317,9 +314,7 @@
                   esc(seg.safe_travel_advice || 'Safe to travel — check status before departing.') + '</span></td>'
                 : '';
             const authorityTail = IS_AUTHORITY
-                ? '<td class="road-weather-col"><span class="road-weather-badge">' +
-                  '<i class="fas ' + weatherIcon(seg.weather) + ' me-1"></i>' + esc(formatWeather(seg.weather)) + '</span></td>' +
-                  '<td class="road-reason-cell" title="' + esc(seg.reason || '') + '">' + esc(seg.reason || '—') + '</td>' +
+                ? '<td class="road-reason-cell" title="' + esc(seg.reason || '') + '">' + esc(seg.reason || '—') + '</td>' +
                   '<td class="text-end road-action-cell"><button type="button" class="btn btn-sm btn-road-update btn-edit-road" data-segment-id="' +
                   seg.id + '"><i class="fas fa-pen"></i><span class="d-none d-md-inline ms-1">Update</span></button></td>'
                 : '';
@@ -359,6 +354,67 @@
         $el.html(items.map(tpl).join(''));
     }
 
+    function renderAuthorityRoadForm() {
+        const $mount = $('#authorityRoadFormMount');
+        if (!$mount.length) return;
+
+        $('#authorityRoadForm, #authorityReadingTime, #authorityVehicles, #authorityWeather').remove();
+
+        $mount.html(
+            '<form id="authorityRoadForm" class="road-entry-form" data-form-version="2">' +
+            '<div class="row g-3">' +
+            '<div class="col-md-6">' +
+            '<label class="form-label" for="authorityRoadSelect">Road <span class="text-danger">*</span></label>' +
+            '<select class="form-select" id="authorityRoadSelect" name="segment_id" required>' +
+            '<option value="" disabled selected>Select a road in Remera Sector…</option>' +
+            '</select></div>' +
+            '<div class="col-md-3">' +
+            '<label class="form-label" for="authorityRoadStatus">Status <span class="text-danger">*</span></label>' +
+            '<select class="form-select" id="authorityRoadStatus" name="road_status" required>' +
+            '<option value="normal">Normal</option>' +
+            '<option value="congested">Congested</option>' +
+            '<option value="blocked">Blocked</option>' +
+            '<option value="maintenance">Under Maintenance</option>' +
+            '</select></div>' +
+            '<div class="col-md-3">' +
+            '<label class="form-label" for="authorityCongestion">Congestion <span class="text-danger">*</span></label>' +
+            '<select class="form-select" id="authorityCongestion" name="congestion_level" required>' +
+            '<option value="low">Low</option>' +
+            '<option value="moderate">Moderate</option>' +
+            '<option value="high">High</option>' +
+            '<option value="severe">Severe</option>' +
+            '</select></div>' +
+            '<div class="col-12">' +
+            '<label class="form-label" for="authorityStatusNote">Officer Notes</label>' +
+            '<input type="text" class="form-control" id="authorityStatusNote" name="status_note" maxlength="255" ' +
+            'placeholder="e.g. Heavy queue near roundabout, lane closure, or alternate route advice">' +
+            '</div>' +
+            '<div class="col-12">' +
+            '<button type="submit" class="btn btn-dark" id="btnSubmitRoadData">' +
+            '<i class="fas fa-save me-2"></i>Save Road Status</button>' +
+            '<button type="button" class="btn btn-outline-secondary ms-2" id="btnClearRoadForm">Clear</button>' +
+            '</div></div>' +
+            '<div id="authorityRoadFormMsg" class="mt-3"></div>' +
+            '</form>'
+        );
+
+        if (latestRoadStatus && latestRoadStatus.segments) {
+            populateAuthorityRoadSelect(latestRoadStatus.segments);
+        }
+        setAuthorityCongestionState();
+    }
+
+    function bindAuthorityRoadFormEvents() {
+        $('#authorityRoadStatus').off('change.roadstatus').on('change.roadstatus', setAuthorityCongestionState);
+        $('#btnClearRoadForm').off('click.roadstatus').on('click.roadstatus', function () {
+            $('#authorityRoadForm')[0].reset();
+            $('#authorityRoadFormMsg').empty();
+            setAuthorityCongestionState();
+        });
+        $('#authorityRoadForm').off('submit.roadstatus').on('submit.roadstatus', submitAuthorityRoadForm);
+        setAuthorityCongestionState();
+    }
+
     function populateAuthorityRoadSelect(segments) {
         const $sel = $('#authorityRoadSelect');
         if (!$sel.length) return;
@@ -372,12 +428,10 @@
         if (current) $sel.val(current);
     }
 
-    function setDefaultReadingTime() {
-        const $input = $('#authorityReadingTime');
-        if (!$input.length) return;
-        const now = new Date();
-        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-        $input.val(now.toISOString().slice(0, 16));
+    function setAuthorityCongestionState() {
+        if ($('#authorityRoadStatus').val() === 'blocked') {
+            $('#authorityCongestion').val('severe');
+        }
     }
 
     function prefillAuthorityForm(segmentId) {
@@ -385,11 +439,15 @@
         const seg = (latestRoadStatus.segments || []).find(function (s) { return String(s.id) === String(segmentId); });
         $('#authorityRoadSelect').val(segmentId);
         if (seg) {
-            if (seg.vehicle_count != null) $('#authorityVehicles').val(seg.vehicle_count);
-            if (seg.avg_speed_kmh != null) $('#authoritySpeed').val(seg.avg_speed_kmh);
-            if (seg.weather) $('#authorityWeather').val(String(seg.weather).toLowerCase());
-            if (seg.reason) $('#authorityStatusNote').val(seg.reason);
+            let roadStatus = seg.status || 'normal';
+            if (roadStatus === 'issue') {
+                roadStatus = 'maintenance';
+            }
+            $('#authorityRoadStatus').val(roadStatus);
+            $('#authorityCongestion').val(seg.congestion_level || 'low');
+            $('#authorityStatusNote').val(seg.reason || '');
         }
+        setAuthorityCongestionState();
         $('#roadEntryCard').slideDown(200);
         $('html, body').animate({ scrollTop: $('#roadEntryCard').offset().top - 90 }, 300);
     }
@@ -401,7 +459,9 @@
         updateHeader(res.meta, res.summary);
         updateLiveBadge(res.meta);
         renderRoadTable(currentRoadFilter);
-        populateAuthorityRoadSelect(res.segments);
+        if (IS_AUTHORITY) {
+            populateAuthorityRoadSelect(res.segments);
+        }
 
         renderFeed('#driverRoadIssueList', res.issue_roads, function (seg) {
             return '<div class="road-side-item road-side-issue">' +
@@ -463,13 +523,10 @@
         const $btn = $('#btnSubmitRoadData');
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving…');
 
-        post('authority_submit_road_reading', {
+        post('authority_mark_road_status', {
             segment_id: $('#authorityRoadSelect').val(),
-            reading_time: $('#authorityReadingTime').val(),
-            vehicle_count: $('#authorityVehicles').val(),
-            avg_speed_kmh: $('#authoritySpeed').val(),
-            density_veh_per_km: $('#authorityDensity').val(),
-            weather: $('#authorityWeather').val(),
+            road_status: $('#authorityRoadStatus').val(),
+            congestion_level: $('#authorityCongestion').val(),
             status_note: $('#authorityStatusNote').val()
         }).always(function () {
             $btn.prop('disabled', false).html('<i class="fas fa-save me-2"></i>Save Road Status');
@@ -522,16 +579,11 @@
             });
 
         if (IS_AUTHORITY) {
+            renderAuthorityRoadForm();
             $('#btnToggleRoadEntry').off('click.roadstatus').on('click.roadstatus', function () {
                 $('#roadEntryCard').slideToggle(200);
             });
-            $('#btnClearRoadForm').off('click.roadstatus').on('click.roadstatus', function () {
-                $('#authorityRoadForm')[0].reset();
-                setDefaultReadingTime();
-                $('#authorityRoadFormMsg').empty();
-            });
-            $('#authorityRoadForm').off('submit.roadstatus').on('submit.roadstatus', submitAuthorityRoadForm);
-            setDefaultReadingTime();
+            bindAuthorityRoadFormEvents();
         }
     }
 

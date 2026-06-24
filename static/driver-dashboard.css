@@ -325,6 +325,25 @@
     border-left-color: #dc2626;
 }
 
+.notification-item.notification-unread {
+    background: #fffbeb;
+    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.2);
+}
+
+.notification-new-badge {
+    display: inline-block;
+    margin-left: 0.45rem;
+    padding: 0.1rem 0.45rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #b45309;
+    background: #fef3c7;
+    border-radius: 999px;
+    vertical-align: middle;
+}
+
 .notification-message {
     margin-top: 0.35rem;
     margin-left: 1.65rem;

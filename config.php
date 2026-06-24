@@ -109,6 +109,15 @@ function requireDriver() {
     }
 }
 
+function requireAuthority() {
+    requireLogin();
+    if (($_SESSION['user_type'] ?? '') !== 'traffic_authority') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Traffic police access only']);
+        exit();
+    }
+}
+
 function isLoggedIn() {
     return isset($_SESSION['user_id']) && !empty($_SESSION['user_id']);
 }
