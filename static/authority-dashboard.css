@@ -1,7 +1,243 @@
 /* Traffic Police Officer dashboard — extends shared driver-dashboard styles */
 
 .authority-section .authority-form textarea {
-    min-height: 72px;
+    min-height: 88px;
+    resize: vertical;
+}
+
+/* ── Incidents page ── */
+.incidents-page-header {
+    padding: 0.25rem 0 0.5rem;
+}
+
+.incidents-page-title {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: #111827;
+}
+
+.incidents-report-card {
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+    overflow: hidden;
+}
+
+.incidents-report-card-header {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.incidents-form-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    padding: 0.75rem 0.75rem 0;
+    background: #f8fafc;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.incidents-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.75rem 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 10px 10px 0 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.incidents-tab i {
+    font-size: 1.1rem;
+}
+
+.incidents-tab:hover {
+    color: #111827;
+    background: rgba(255, 255, 255, 0.7);
+}
+
+.incidents-tab.active {
+    color: #111827;
+    background: #fff;
+    border-color: #e5e7eb;
+    border-bottom-color: #fff;
+    margin-bottom: -1px;
+    position: relative;
+    z-index: 1;
+}
+
+.incidents-tab[data-incident-tab="accident"].active {
+    box-shadow: inset 0 -3px 0 #dc2626;
+}
+
+.incidents-tab[data-incident-tab="congestion"].active {
+    box-shadow: inset 0 -3px 0 #f59e0b;
+}
+
+.incidents-tab[data-incident-tab="blockage"].active {
+    box-shadow: inset 0 -3px 0 #111827;
+}
+
+.incidents-form-body {
+    padding-top: 1.25rem;
+}
+
+.incident-form-panel {
+    display: none;
+}
+
+.incident-form-panel.active {
+    display: block;
+}
+
+.incident-panel-intro {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    padding: 0.9rem 1rem;
+    border-radius: 10px;
+    margin-bottom: 1.15rem;
+    border: 1px solid transparent;
+}
+
+.incident-panel-intro > i {
+    font-size: 1.25rem;
+    margin-top: 0.15rem;
+    flex-shrink: 0;
+}
+
+.incident-panel-intro strong {
+    display: block;
+    margin-bottom: 0.15rem;
+    font-size: 0.95rem;
+}
+
+.incident-panel-intro p {
+    font-size: 0.82rem;
+    color: #64748b;
+    line-height: 1.45;
+}
+
+.incident-panel-intro-danger {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #b91c1c;
+}
+
+.incident-panel-intro-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #b45309;
+}
+
+.incident-panel-intro-dark {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #111827;
+}
+
+.incident-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem 1rem;
+    margin-bottom: 1.15rem;
+}
+
+.incident-field-full {
+    grid-column: 1 / -1;
+}
+
+.incident-form .form-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.35rem;
+}
+
+.incident-form .form-control,
+.incident-form .form-select {
+    border-radius: 8px;
+    border-color: #d1d5db;
+    font-size: 0.9rem;
+}
+
+.incident-form .form-control:focus,
+.incident-form .form-select:focus {
+    border-color: #9ca3af;
+    box-shadow: 0 0 0 0.2rem rgba(17, 24, 39, 0.08);
+}
+
+.incident-form .form-text {
+    font-size: 0.72rem;
+    margin-top: 0.2rem;
+}
+
+.incident-submit-btn {
+    border-radius: 10px;
+    padding: 0.65rem 1rem;
+    font-weight: 600;
+}
+
+.incident-form-msg:not(:empty) {
+    margin-top: 0.85rem;
+}
+
+.incidents-list-card {
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+}
+
+.incidents-list-body {
+    max-height: 720px;
+    overflow-y: auto;
+}
+
+.incidents-list-body .table {
+    margin-bottom: 0;
+    font-size: 0.88rem;
+}
+
+.incidents-list-body .table thead th {
+    background: #f8fafc;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
+    border-bottom-width: 1px;
+    white-space: nowrap;
+}
+
+.incidents-list-body .table tbody tr:hover {
+    background: #f8fafc;
+}
+
+@media (max-width: 575px) {
+    .incidents-form-tabs {
+        grid-template-columns: 1fr;
+        padding: 0.5rem;
+        gap: 0.35rem;
+    }
+
+    .incidents-tab {
+        flex-direction: row;
+        border-radius: 8px;
+        margin-bottom: 0;
+    }
+
+    .incidents-tab.active {
+        margin-bottom: 0;
+        border-bottom-color: #e5e7eb;
+    }
+
+    .incident-form-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .authority-section .stat-card.stat-clickable {
@@ -82,6 +318,8 @@
 .auth-map-shell .driver-map-tool-btn i {
     color: #000;
 }
+
+.auth-map-shell .leaflet-control-zoom {
     border: none !important;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15) !important;
     border-radius: 10px !important;
@@ -161,4 +399,155 @@
     .auth-home-map {
         height: 320px;
     }
+}
+
+/* ── Traffic Reports ── */
+.auth-reports-page {
+    padding-bottom: 0.5rem;
+}
+
+.auth-reports-hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 55%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+}
+
+.auth-reports-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.auth-report-period-toggle .btn.active {
+    background: #111827;
+    border-color: #111827;
+    color: #fff;
+}
+
+.auth-report-kpi {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 1.1rem 1rem;
+    text-align: center;
+    height: 100%;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-report-kpi:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.auth-report-kpi-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.55rem;
+    font-size: 1rem;
+    color: #fff;
+}
+
+.auth-report-kpi-icon.kpi-readings { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+.auth-report-kpi-icon.kpi-accidents { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+.auth-report-kpi-icon.kpi-alerts { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.auth-report-kpi-icon.kpi-blocked { background: linear-gradient(135deg, #7c3aed, #5b21b6); }
+
+.auth-report-kpi-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: #0f172a;
+}
+
+.auth-report-kpi-label {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin-top: 0.2rem;
+    font-weight: 600;
+}
+
+.auth-report-chart-card {
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+    overflow: hidden;
+}
+
+.auth-report-chart-card .card-header {
+    background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+    border-bottom: 1px solid #eef2f7;
+    padding: 1rem 1.25rem;
+}
+
+.auth-report-chart-card .card-header .card-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.auth-report-chart-card .card-header small {
+    display: block;
+    margin-top: 0.15rem;
+}
+
+.auth-chart-wrap {
+    position: relative;
+    height: 280px;
+}
+
+.auth-chart-wrap-lg {
+    height: 320px;
+}
+
+.auth-chart-wrap-donut {
+    height: 260px;
+    min-height: 220px;
+}
+
+.auth-report-type-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    justify-content: center;
+}
+
+.auth-report-type-legend .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 600;
+}
+
+.auth-report-type-legend .legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.auth-report-footnote {
+    font-size: 0.82rem;
+    color: #64748b;
+    padding: 0.75rem 1rem;
+    background: #f8fafc;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+}
+
+.auth-report-loading {
+    text-align: center;
+    padding: 2rem;
+    color: #64748b;
 }

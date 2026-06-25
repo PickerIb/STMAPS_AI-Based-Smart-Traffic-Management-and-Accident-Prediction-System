@@ -1,10 +1,30 @@
 <?php
 
 require_once __DIR__ . '/DriverRouteService.php';
+require_once __DIR__ . '/sms_helpers.php';
 
 function authorityApiJson($payload) {
     echo json_encode($payload);
     exit;
+}
+
+function authorityApiJsonWithSms(array $payload): void
+{
+    $smsDispatch = $payload['sms_dispatch'] ?? null;
+    unset($payload['sms_dispatch']);
+
+    if (!is_array($smsDispatch) || empty($smsDispatch['road'])) {
+        authorityApiJson($payload);
+    }
+
+    strgs_finish_json_response($payload, static function () use ($smsDispatch) {
+        $conn = authorityApiDb();
+        strgs_send_road_blockage_sms_to_drivers(
+            $conn,
+            (string)($smsDispatch['road'] ?? ''),
+            (string)($smsDispatch['details'] ?? '')
+        );
+    });
 }
 
 function authorityApiDb(): PDO {
@@ -154,15 +174,22 @@ function handleAuthorityApiAction(string $action): void {
 
             case 'driver_road_status':
                 $segments = $service->enrichSegmentsForDisplay($service->getSegmentsWithStatus());
+                $blockedRoads = array_values(array_filter($segments, static fn($s) => $s['status'] === 'blocked'));
+                $congestedRoads = array_values(array_filter($segments, static fn($s) => $s['status'] === 'congested'));
+                $normalRoads = array_values(array_filter($segments, static fn($s) => $s['status'] === 'normal'));
+                $issueRoads = array_values(array_filter($segments, static function (array $seg): bool {
+                    return in_array($seg['status'], ['blocked', 'issue'], true)
+                        || in_array($seg['congestion_level'], ['high', 'severe'], true);
+                }));
                 authorityApiJson([
                     'success' => true,
                     'segments' => $segments,
                     'summary' => $service->getRoadStatusSummary(),
+                    'normal_roads' => $normalRoads,
+                    'congested_roads' => $congestedRoads,
+                    'blocked_roads' => $blockedRoads,
+                    'issue_roads' => $issueRoads,
                     'accidents' => $service->getAccidentsList(10, 0),
-                    'issue_roads' => array_values(array_filter($segments, static function (array $seg): bool {
-                        return in_array($seg['status'], ['blocked', 'issue'], true)
-                            || in_array($seg['congestion_level'], ['high', 'severe'], true);
-                    })),
                     'live_meta' => $service->getRoadStatusLiveMeta($segments),
                 ]);
                 break;
@@ -192,7 +219,7 @@ function handleAuthorityApiAction(string $action): void {
                 break;
 
             case 'authority_mark_road_status':
-                authorityApiJson($service->markRoadStatus($userId, [
+                authorityApiJsonWithSms($service->markRoadStatus($userId, [
                     'segment_id' => $_POST['segment_id'] ?? 0,
                     'road_status' => $_POST['road_status'] ?? '',
                     'congestion_level' => $_POST['congestion_level'] ?? 'low',
@@ -205,7 +232,7 @@ function handleAuthorityApiAction(string $action): void {
                 break;
 
             case 'authority_report_alert':
-                authorityApiJson($service->reportTrafficAlert($userId, $_POST));
+                authorityApiJsonWithSms($service->reportTrafficAlert($userId, $_POST));
                 break;
 
             case 'authority_alerts':

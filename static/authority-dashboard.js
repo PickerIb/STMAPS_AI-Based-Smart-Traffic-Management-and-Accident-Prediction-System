@@ -23,12 +23,14 @@
     let homeZoneLayer = null;
     let monitorZoneLayer = null;
     let lastHomeMapPayload = null;
+    let pendingRoadStatusFilter = null;
     let lastMonitorMapPayload = null;
     let segmentOptions = [];
     let activityPage = 1;
     let reportPeriod = 'daily';
     let readingsChart = null;
     let alertsChart = null;
+    let activityChart = null;
     let lastReportData = null;
     let notifyPollTimer = null;
 
@@ -138,11 +140,11 @@
     }
 
     function segmentColor(seg) {
-        if (seg.status === 'blocked') return '#1f2937';
+        if (seg.status === 'blocked' || seg.congestion_level === 'severe') return '#b91c1c';
         if (seg.congestion_level === 'low') return '#22c55e';
         if (seg.congestion_level === 'moderate') return '#f59e0b';
         if (seg.congestion_level === 'high') return '#f97316';
-        return '#dc2626';
+        return '#b91c1c';
     }
 
     function isSatelliteMode(map) {
@@ -507,9 +509,9 @@
                 return;
             }
             let html = '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>' +
-                '<th>ID</th><th>Road</th><th>Time</th><th>Severity</th><th>Status</th><th></th></tr></thead><tbody>';
+                '<th>Report #</th><th>Road</th><th>Time</th><th>Severity</th><th>Status</th><th></th></tr></thead><tbody>';
             res.accidents.forEach(function (a) {
-                html += '<tr><td>' + a.id + '</td><td>' + esc(a.segment_name) + '</td><td>' + esc(a.accident_time) +
+                html += '<tr><td>' + (a.report_number || '—') + '</td><td>' + esc(a.segment_name) + '</td><td>' + esc(a.accident_time) +
                     '</td><td>' + esc(a.severity) + '</td><td>' + (a.is_resolved ? '<span class="badge bg-success">Resolved</span>' : '<span class="badge bg-warning text-dark">Active</span>') +
                     '</td><td>' + (a.is_resolved ? '' : '<button type="button" class="btn btn-sm btn-outline-success btn-resolve-accident" data-id="' + a.id + '">Resolve</button>') +
                     '</td></tr>';
@@ -590,31 +592,278 @@
         });
     }
 
+    const ALERT_TYPE_META = {
+        congestion: { label: 'Congestion', color: '#f59e0b' },
+        incident: { label: 'Accidents', color: '#dc2626' },
+        road_blockage: { label: 'Road Blockage', color: '#b91c1c' },
+        system: { label: 'Maintenance', color: '#6366f1' }
+    };
+
+    const CHART_FONT = "'Segoe UI', system-ui, -apple-system, sans-serif";
+
+    function formatReportDay(dayStr) {
+        if (!dayStr) return '';
+        const parts = String(dayStr).split('-');
+        if (parts.length !== 3) return dayStr;
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (Number.isNaN(d.getTime())) return dayStr;
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+
+    function alertTypeLabel(type) {
+        return (ALERT_TYPE_META[type] || { label: type }).label;
+    }
+
+    function mergeActivityTimeline(readings, alertsTimeline) {
+        const map = {};
+        (readings || []).forEach(function (r) {
+            map[r.day] = { readings: Number(r.cnt) || 0, alerts: 0 };
+        });
+        (alertsTimeline || []).forEach(function (a) {
+            if (!map[a.day]) {
+                map[a.day] = { readings: 0, alerts: 0 };
+            }
+            map[a.day].alerts = Number(a.cnt) || 0;
+        });
+        const days = Object.keys(map).sort();
+        if (!days.length) {
+            return { labels: ['No data'], readings: [0], alerts: [0] };
+        }
+        return {
+            labels: days.map(formatReportDay),
+            readings: days.map(function (d) { return map[d].readings; }),
+            alerts: days.map(function (d) { return map[d].alerts; })
+        };
+    }
+
+    function destroyReportCharts() {
+        [readingsChart, alertsChart, activityChart].forEach(function (c) {
+            if (c) c.destroy();
+        });
+        readingsChart = null;
+        alertsChart = null;
+        activityChart = null;
+    }
+
+    function chartGradient(ctx, colorRgb) {
+        const g = ctx.createLinearGradient(0, 0, 0, 280);
+        g.addColorStop(0, 'rgba(' + colorRgb + ', 0.35)');
+        g.addColorStop(1, 'rgba(' + colorRgb + ', 0.02)');
+        return g;
+    }
+
+    function baseChartOptions(extra) {
+        return Object.assign({
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 600, easing: 'easeOutQuart' },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        font: { family: CHART_FONT, size: 12 },
+                        padding: 16,
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+                    titleFont: { family: CHART_FONT, size: 13, weight: '600' },
+                    bodyFont: { family: CHART_FONT, size: 12 },
+                    padding: 12,
+                    cornerRadius: 8,
+                    displayColors: true
+                }
+            }
+        }, extra || {});
+    }
+
+    function renderReportKpis(reports) {
+        $('#authKpiReadings').text(reports.total_readings ?? 0);
+        $('#authKpiAccidents').text(reports.accident_count ?? 0);
+        $('#authKpiAlerts').text(reports.total_alerts ?? 0);
+        $('#authKpiBlockages').text(reports.blockage_count ?? 0);
+        $('#authReportPeriodLabel').text(
+            (reports.period_label || 'Report') + ' — Remera Sector traffic police activity'
+        );
+    }
+
+    function renderAlertTypeLegend(alerts) {
+        const $el = $('#authReportAlertLegend').empty();
+        (alerts || []).forEach(function (a) {
+            const meta = ALERT_TYPE_META[a.type] || { label: a.type, color: '#94a3b8' };
+            $el.append(
+                '<span class="legend-item"><span class="legend-swatch" style="background:' + meta.color + '"></span>' +
+                esc(meta.label) + ' <strong>' + (a.cnt || 0) + '</strong></span>'
+            );
+        });
+        if (!$el.children().length) {
+            $el.html('<span class="text-muted small">No alerts in this period</span>');
+        }
+    }
+
     function loadReports(period) {
         reportPeriod = period || reportPeriod;
+        $('#authReportLoading').removeClass('d-none');
+        $('#authReportKpis, .auth-report-chart-card').css('opacity', '0.55');
+
         post('authority_reports', { period: reportPeriod }).done(function (res) {
             if (!res.success) return;
             lastReportData = res.reports;
-            const readings = res.reports.road_readings || [];
-            const alerts = res.reports.alerts_by_type || [];
-            const rLabels = readings.map(function (r) { return r.day; });
-            const rData = readings.map(function (r) { return r.cnt; });
-            const aLabels = alerts.map(function (a) { return a.type; });
-            const aData = alerts.map(function (a) { return a.cnt; });
+            const reports = res.reports || {};
+            const readings = reports.road_readings || [];
+            const alerts = reports.alerts_by_type || [];
+            const timeline = mergeActivityTimeline(readings, reports.alerts_timeline || []);
 
-            if (readingsChart) readingsChart.destroy();
-            if (alertsChart) alertsChart.destroy();
-            readingsChart = new Chart(document.getElementById('authReportReadingsChart'), {
-                type: 'bar',
-                data: { labels: rLabels.length ? rLabels : ['No data'], datasets: [{ label: 'Road readings', data: rData.length ? rData : [0], backgroundColor: '#2563eb' }] },
-                options: { responsive: true, plugins: { title: { display: true, text: 'Police road readings' } } }
-            });
-            alertsChart = new Chart(document.getElementById('authReportAlertsChart'), {
-                type: 'doughnut',
-                data: { labels: aLabels.length ? aLabels : ['none'], datasets: [{ data: aData.length ? aData : [0], backgroundColor: ['#f59e0b', '#dc2626', '#2563eb', '#6b7280'] }] },
-                options: { responsive: true, plugins: { title: { display: true, text: 'Alerts by type' } } }
-            });
-            $('#authReportSummary').text('Period: ' + reportPeriod + ' · Accidents: ' + (res.reports.accident_count || 0));
+            renderReportKpis(reports);
+            destroyReportCharts();
+
+            const activityCtx = document.getElementById('authReportActivityChart');
+            if (activityCtx) {
+                activityChart = new Chart(activityCtx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: timeline.labels,
+                        datasets: [
+                            {
+                                label: 'Road updates',
+                                data: timeline.readings,
+                                borderColor: '#2563eb',
+                                backgroundColor: chartGradient(activityCtx.getContext('2d'), '37, 99, 235'),
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.35,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#2563eb'
+                            },
+                            {
+                                label: 'Traffic alerts',
+                                data: timeline.alerts,
+                                borderColor: '#f59e0b',
+                                backgroundColor: chartGradient(activityCtx.getContext('2d'), '245, 158, 11'),
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.35,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#f59e0b'
+                            }
+                        ]
+                    },
+                    options: baseChartOptions({
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: { font: { family: CHART_FONT, size: 11 }, color: '#64748b' }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                ticks: { stepSize: 1, font: { family: CHART_FONT, size: 11 }, color: '#64748b' },
+                                grid: { color: 'rgba(148, 163, 184, 0.2)' },
+                                title: { display: true, text: 'Count', font: { family: CHART_FONT, size: 11 } }
+                            }
+                        }
+                    })
+                });
+            }
+
+            const alertLabels = alerts.length
+                ? alerts.map(function (a) { return alertTypeLabel(a.type); })
+                : ['No alerts'];
+            const alertData = alerts.length ? alerts.map(function (a) { return Number(a.cnt) || 0; }) : [1];
+            const alertColors = alerts.length
+                ? alerts.map(function (a) { return (ALERT_TYPE_META[a.type] || { color: '#94a3b8' }).color; })
+                : ['#e2e8f0'];
+
+            const alertsCtx = document.getElementById('authReportAlertsChart');
+            if (alertsCtx) {
+                alertsChart = new Chart(alertsCtx.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: alertLabels,
+                        datasets: [{
+                            data: alertData,
+                            backgroundColor: alertColors,
+                            borderColor: '#fff',
+                            borderWidth: 3,
+                            hoverOffset: 8
+                        }]
+                    },
+                    options: baseChartOptions({
+                        cutout: '62%',
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function (ctx) {
+                                        const total = ctx.dataset.data.reduce(function (s, v) { return s + v; }, 0);
+                                        const pct = total ? Math.round((ctx.parsed / total) * 100) : 0;
+                                        return ctx.label + ': ' + ctx.parsed + ' (' + pct + '%)';
+                                    }
+                                }
+                            }
+                        }
+                    })
+                });
+            }
+            renderAlertTypeLegend(alerts);
+
+            const rLabels = readings.length ? readings.map(function (r) { return formatReportDay(r.day); }) : ['No data'];
+            const rData = readings.length ? readings.map(function (r) { return Number(r.cnt) || 0; }) : [0];
+            const readingsCtx = document.getElementById('authReportReadingsChart');
+            if (readingsCtx) {
+                const rCtx = readingsCtx.getContext('2d');
+                readingsChart = new Chart(rCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: rLabels,
+                        datasets: [{
+                            label: 'Police road readings',
+                            data: rData,
+                            backgroundColor: chartGradient(rCtx, '29, 78, 216'),
+                            borderColor: '#2563eb',
+                            borderWidth: 1,
+                            borderRadius: 8,
+                            borderSkipped: false,
+                            maxBarThickness: 48
+                        }]
+                    },
+                    options: baseChartOptions({
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: { font: { family: CHART_FONT, size: 11 }, color: '#64748b' }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                ticks: { stepSize: 1, font: { family: CHART_FONT, size: 11 }, color: '#64748b' },
+                                grid: { color: 'rgba(148, 163, 184, 0.2)' }
+                            }
+                        }
+                    })
+                });
+            }
+
+            const congestion = reports.congestion_count ?? 0;
+            const maintenance = reports.maintenance_count ?? 0;
+            $('#authReportSummary').html(
+                '<i class="fas fa-circle-info me-1"></i>' +
+                '<strong>' + esc(reports.period_label || reportPeriod) + '</strong> summary: ' +
+                (reports.total_readings ?? 0) + ' road update(s), ' +
+                (reports.accident_count ?? 0) + ' accident report(s), ' +
+                (reports.total_alerts ?? 0) + ' alert(s) ' +
+                '(congestion ' + congestion + ', blockages ' + (reports.blockage_count ?? 0) +
+                ', maintenance ' + maintenance + ').'
+            );
+        }).always(function () {
+            $('#authReportLoading').addClass('d-none');
+            $('#authReportKpis, .auth-report-chart-card').css('opacity', '1');
         });
     }
 
@@ -644,6 +893,40 @@
         $el.html('<div class="alert alert-' + (res.success ? 'success' : 'danger') + ' py-2">' + esc(res.message) + '</div>');
     }
 
+    function setIncidentFormBusy($form, busy) {
+        const $btn = $form.find('button[type="submit"]');
+        if (busy) {
+            if (!$btn.data('default-html')) {
+                $btn.data('default-html', $btn.html());
+            }
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Submitting…');
+            $form.addClass('is-submitting');
+        } else {
+            $btn.prop('disabled', false).html($btn.data('default-html') || 'Submit');
+            $form.removeClass('is-submitting');
+        }
+    }
+
+    function submitIncidentForm($form, action, $msg, onSuccess) {
+        if ($form.hasClass('is-submitting')) {
+            return;
+        }
+        setIncidentFormBusy($form, true);
+        post(action, serializeForm($form)).always(function () {
+            setIncidentFormBusy($form, false);
+        }).done(function (res) {
+            showFormMsg($msg, res);
+            if (res.success) {
+                if (typeof onSuccess === 'function') {
+                    onSuccess(res);
+                }
+                $form[0].reset();
+            }
+        }).fail(function () {
+            showFormMsg($msg, { success: false, message: 'Could not reach the server. Please try again.' });
+        });
+    }
+
     function serializeForm($form) {
         const o = {};
         $form.serializeArray().forEach(function (f) { o[f.name] = f.value; });
@@ -665,7 +948,12 @@
         });
         $('.authority-nav-jump, [data-section-jump]').on('click', function (e) {
             e.preventDefault();
-            const sec = $(this).data('section') || $(this).data('section-jump');
+            const $el = $(this);
+            const sec = $el.data('section') || $el.data('section-jump');
+            const roadFilter = $el.data('road-filter');
+            if (roadFilter && sec === 'road-status') {
+                pendingRoadStatusFilter = roadFilter;
+            }
             showSection(sec);
         });
         $('#btnHeaderNotifications').on('click', function () {
@@ -686,7 +974,13 @@
             }, 250);
         }
         if (section === 'road-status' && window.STRGSRoadStatus) {
-            STRGSRoadStatus.load(true);
+            const filter = pendingRoadStatusFilter;
+            pendingRoadStatusFilter = null;
+            STRGSRoadStatus.load(true).done(function () {
+                if (filter) {
+                    STRGSRoadStatus.setFilter(filter);
+                }
+            });
             STRGSRoadStatus.startRefresh();
         } else if (window.STRGSRoadStatus) {
             STRGSRoadStatus.stopRefresh();
@@ -694,6 +988,7 @@
         if (section === 'incidents') {
             loadSegmentOptions();
             loadAccidents();
+            switchIncidentTab('accident');
             if (!$('#accidentTime').val()) {
                 const now = new Date();
                 now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -711,9 +1006,28 @@
             }, 250);
         }
         if (section === 'notifications') loadAuthAlerts(false);
-        if (section === 'reports') loadReports(reportPeriod);
+        if (section === 'reports') {
+            loadReports(reportPeriod);
+            setTimeout(function () {
+                [activityChart, alertsChart, readingsChart].forEach(function (c) {
+                    if (c) c.resize();
+                });
+            }, 280);
+        }
         if (section === 'activity-history') loadActivity(1);
         if (section === 'profile') loadProfile();
+    }
+
+    function switchIncidentTab(tab) {
+        const key = tab || 'accident';
+        $('.incidents-tab').each(function () {
+            const isActive = $(this).data('incident-tab') === key;
+            $(this).toggleClass('active', isActive).attr('aria-selected', isActive ? 'true' : 'false');
+        });
+        $('.incident-form-panel').each(function () {
+            const isActive = this.id === 'incidentPanel' + key.charAt(0).toUpperCase() + key.slice(1);
+            $(this).toggleClass('active', isActive).prop('hidden', !isActive);
+        });
     }
 
     function bindEvents() {
@@ -728,28 +1042,31 @@
             setMapBaseLayer(monitorMap, $(this).data('map-layer'));
         });
 
+        $(document).on('click', '.incidents-tab', function () {
+            switchIncidentTab($(this).data('incident-tab'));
+        });
+
         $('#authAccidentForm').on('submit', function (e) {
             e.preventDefault();
-            post('authority_report_accident', serializeForm($(this))).done(function (res) {
-                showFormMsg($('#authAccidentMsg'), res);
-                if (res.success) { loadAccidents(); loadNotifyCount(); }
+            const $form = $(this);
+            submitIncidentForm($form, 'authority_report_accident', $('#authAccidentMsg'), function () {
+                loadAccidents();
+                loadNotifyCount();
+                if (window.STRGSRoadStatus) {
+                    STRGSRoadStatus.load(true);
+                }
             });
         });
-        $('#authCongestionForm, #authBlockageForm, #authNotifyForm').on('submit', function (e) {
+        $('#authCongestionForm, #authBlockageForm').on('submit', function (e) {
             e.preventDefault();
             const $form = $(this);
-            const $msg = $form.attr('id') === 'authCongestionForm' ? $('#authCongestionMsg') :
-                $form.attr('id') === 'authBlockageForm' ? $('#authBlockageMsg') : $('#authNotifyMsg');
-            post('authority_report_alert', serializeForm($form)).done(function (res) {
-                showFormMsg($msg, res);
-                if (res.success) { loadAuthAlerts(false); loadNotifyCount(); }
-            });
-        });
-        $('#authQuickStatusForm').on('submit', function (e) {
-            e.preventDefault();
-            post('authority_mark_road_status', serializeForm($(this))).done(function (res) {
-                showFormMsg($('#authQuickStatusMsg'), res);
-                if (res.success && window.STRGSRoadStatus) STRGSRoadStatus.load(true);
+            const $msg = $form.attr('id') === 'authCongestionForm' ? $('#authCongestionMsg') : $('#authBlockageMsg');
+            submitIncidentForm($form, 'authority_report_alert', $msg, function () {
+                loadAuthAlerts(false);
+                loadNotifyCount();
+                if (window.STRGSRoadStatus) {
+                    STRGSRoadStatus.load(true);
+                }
             });
         });
         $(document).on('click', '.btn-resolve-accident', function () {
@@ -774,9 +1091,21 @@
         });
         $('#btnExportAuthReport').on('click', function () {
             if (!lastReportData) return;
-            const rows = [['Metric', 'Value'], ['Period', reportPeriod], ['Accidents', lastReportData.accident_count || 0]];
+            const rows = [
+                ['Metric', 'Value'],
+                ['Period', lastReportData.period_label || reportPeriod],
+                ['Road updates', lastReportData.total_readings || 0],
+                ['Accidents', lastReportData.accident_count || 0],
+                ['Total alerts', lastReportData.total_alerts || 0],
+                ['Road blockages', lastReportData.blockage_count || 0],
+                ['Congestion alerts', lastReportData.congestion_count || 0],
+                ['Maintenance alerts', lastReportData.maintenance_count || 0]
+            ];
             (lastReportData.alerts_by_type || []).forEach(function (a) {
-                rows.push(['Alert: ' + a.type, a.cnt]);
+                rows.push(['Alert: ' + alertTypeLabel(a.type), a.cnt]);
+            });
+            (lastReportData.road_readings || []).forEach(function (r) {
+                rows.push(['Readings ' + r.day, r.cnt]);
             });
             const csv = rows.map(function (r) { return r.join(','); }).join('\n');
             const blob = new Blob([csv], { type: 'text/csv' });

@@ -274,10 +274,21 @@
 
     function getFilteredRoads(filter) {
         if (!latestRoadStatus) return [];
-        if (filter === 'normal') return latestRoadStatus.normal_roads || [];
-        if (filter === 'congested') return latestRoadStatus.congested_roads || [];
-        if (filter === 'blocked') return latestRoadStatus.blocked_roads || [];
-        if (filter === 'issues') return latestRoadStatus.issue_roads || [];
+        if (filter === 'normal') {
+            return latestRoadStatus.normal_roads
+                || (latestRoadStatus.segments || []).filter(function (s) { return s.status === 'normal'; });
+        }
+        if (filter === 'congested') {
+            return latestRoadStatus.congested_roads
+                || (latestRoadStatus.segments || []).filter(function (s) { return s.status === 'congested'; });
+        }
+        if (filter === 'blocked') {
+            return latestRoadStatus.blocked_roads
+                || (latestRoadStatus.segments || []).filter(function (s) { return s.status === 'blocked'; });
+        }
+        if (filter === 'issues') {
+            return latestRoadStatus.issue_roads || [];
+        }
         return latestRoadStatus.segments || [];
     }
 
@@ -547,7 +558,7 @@
             if ($('#road-status-section').is(':visible') || $('.road-status-page:visible').length) {
                 loadRoadStatus();
             }
-        }, 45000);
+        }, 10000);
         startLiveMetaTicker();
     }
 
@@ -592,6 +603,12 @@
         startRefresh: startRoadStatusRefresh,
         stopRefresh: stopRoadStatusRefresh,
         renderTable: function (filter) { renderRoadTable(filter || currentRoadFilter); },
+        setFilter: function (filter) {
+            currentRoadFilter = filter || 'all';
+            $('#driverRoadFilters [data-filter]').removeClass('active');
+            $('#driverRoadFilters [data-filter="' + currentRoadFilter + '"]').addClass('active');
+            renderRoadTable(currentRoadFilter);
+        },
         getData: function () { return latestRoadStatus; }
     };
 

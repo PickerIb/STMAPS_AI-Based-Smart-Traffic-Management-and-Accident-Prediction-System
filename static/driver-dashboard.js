@@ -796,10 +796,10 @@
 
         segments.forEach(function (seg) {
             const color = routePlanning ? '#94a3b8'
-                : seg.status === 'blocked' ? '#1f2937'
+                : seg.status === 'blocked' || seg.congestion_level === 'severe' ? '#b91c1c'
                 : seg.congestion_level === 'low' ? '#22c55e'
                 : seg.congestion_level === 'moderate' ? '#f59e0b'
-                : seg.congestion_level === 'high' ? '#f97316' : '#dc2626';
+                : seg.congestion_level === 'high' ? '#f97316' : '#b91c1c';
             const line = L.polyline(
                 [[seg.start_lat, seg.start_lng], [seg.end_lat, seg.end_lng]],
                 {

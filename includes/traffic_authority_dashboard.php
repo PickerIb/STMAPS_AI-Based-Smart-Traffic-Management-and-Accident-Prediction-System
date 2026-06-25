@@ -53,11 +53,11 @@ try {
             <div class="stat-label">Congestion Reports</div>
             <small class="text-muted">Traffic alerts</small>
         </div>
-        <div class="stat-card stat-clickable" data-section-jump="incidents">
+        <div class="stat-card stat-clickable" data-section-jump="road-status" data-road-filter="blocked">
             <div class="stat-icon stat-icon-issues"><i class="fas fa-ban"></i></div>
             <div class="stat-number" id="authStatBlockages">—</div>
             <div class="stat-label">Road Blockages</div>
-            <small class="text-muted">Closed roads</small>
+            <small class="text-muted">Closed roads — view on Road Status</small>
         </div>
     </div>
 
@@ -129,102 +129,176 @@ try {
 
 <!-- Authority: Incidents (Accidents, Congestion, Blockages) -->
 <div id="incidents-section" class="content-section authority-section" style="display:none;">
-    <div class="row g-4">
+    <div class="incidents-page-header mb-4">
+        <div>
+            <h2 class="incidents-page-title mb-1"><i class="fas fa-triangle-exclamation me-2"></i>Report Incidents</h2>
+            <p class="text-muted mb-0">Submit accident, congestion, and road blockage reports for Remera Sector. Drivers receive alerts from these reports.</p>
+        </div>
+    </div>
+
+    <div class="row g-4 incidents-layout">
         <div class="col-lg-5">
-            <div class="dashboard-card mb-4">
-                <div class="card-header"><h3 class="card-title mb-0"><i class="fas fa-car-burst"></i> Report Accident</h3></div>
-                <div class="card-body">
-                    <form id="authAccidentForm" class="authority-form">
-                        <div class="mb-3">
-                            <label class="form-label" for="accidentSegment">Location (Road)</label>
-                            <select class="form-select" id="accidentSegment" name="segment_id" required></select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label" for="accidentTime">Accident Time</label>
-                            <input type="datetime-local" class="form-control" id="accidentTime" name="accident_time" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label" for="accidentSeverity">Severity</label>
-                            <select class="form-select" id="accidentSeverity" name="severity">
-                                <option value="minor">Minor</option>
-                                <option value="moderate">Moderate</option>
-                                <option value="severe">Severe</option>
-                                <option value="fatal">Fatal</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label" for="accidentCause">Description / Cause</label>
-                            <textarea class="form-control" id="accidentCause" name="cause" rows="2" required></textarea>
-                        </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-4"><label class="form-label">Vehicles</label><input type="number" class="form-control" name="vehicles_involved" min="0" value="1"></div>
-                            <div class="col-4"><label class="form-label">Injuries</label><input type="number" class="form-control" name="injuries" min="0" value="0"></div>
-                            <div class="col-4"><label class="form-label">Fatalities</label><input type="number" class="form-control" name="fatalities" min="0" value="0"></div>
-                        </div>
-                        <button type="submit" class="btn btn-danger w-100"><i class="fas fa-paper-plane me-2"></i>Submit Accident Report</button>
-                    </form>
-                    <div id="authAccidentMsg" class="mt-2"></div>
+            <div class="dashboard-card incidents-report-card h-100">
+                <div class="card-header incidents-report-card-header">
+                    <div>
+                        <h3 class="card-title mb-0"><i class="fas fa-clipboard-list"></i> New Field Report</h3>
+                        <small class="text-muted">Choose a report type and complete the form below</small>
+                    </div>
                 </div>
-            </div>
-            <div class="dashboard-card mb-4">
-                <div class="card-header"><h3 class="card-title mb-0"><i class="fas fa-traffic-light"></i> Report Congestion</h3></div>
-                <div class="card-body">
-                    <form id="authCongestionForm" class="authority-form">
-                        <input type="hidden" name="type" value="congestion">
-                        <div class="mb-3"><label class="form-label">Road</label><select class="form-select auth-road-select" name="segment_id" required></select></div>
-                        <div class="mb-3"><label class="form-label">Congestion Level</label>
-                            <select class="form-select" name="severity">
-                                <option value="info">Moderate</option>
-                                <option value="warning" selected>Heavy</option>
-                                <option value="critical">Severe</option>
-                            </select>
-                        </div>
-                        <div class="mb-3"><label class="form-label">Details</label><textarea class="form-control" name="message" rows="2" required placeholder="e.g. Heavy traffic due to rush hour"></textarea></div>
-                        <button type="submit" class="btn btn-warning w-100 text-dark"><i class="fas fa-paper-plane me-2"></i>Report Congestion</button>
-                    </form>
-                    <div id="authCongestionMsg" class="mt-2"></div>
+
+                <div class="incidents-form-tabs" role="tablist" aria-label="Incident report type">
+                    <button type="button" class="incidents-tab active" data-incident-tab="accident" role="tab" aria-selected="true" aria-controls="incidentPanelAccident">
+                        <i class="fas fa-car-burst"></i>
+                        <span>Accident</span>
+                    </button>
+                    <button type="button" class="incidents-tab" data-incident-tab="congestion" role="tab" aria-selected="false" aria-controls="incidentPanelCongestion">
+                        <i class="fas fa-traffic-light"></i>
+                        <span>Congestion</span>
+                    </button>
+                    <button type="button" class="incidents-tab" data-incident-tab="blockage" role="tab" aria-selected="false" aria-controls="incidentPanelBlockage">
+                        <i class="fas fa-ban"></i>
+                        <span>Road Blockage</span>
+                    </button>
                 </div>
-            </div>
-            <div class="dashboard-card">
-                <div class="card-header"><h3 class="card-title mb-0"><i class="fas fa-ban"></i> Report Road Blockage</h3></div>
-                <div class="card-body">
-                    <form id="authBlockageForm" class="authority-form">
-                        <input type="hidden" name="type" value="road_blockage">
-                        <div class="mb-3"><label class="form-label">Road</label><select class="form-select auth-road-select" name="segment_id" required></select></div>
-                        <div class="mb-3"><label class="form-label">Blockage Details</label><textarea class="form-control" name="message" rows="2" required placeholder="e.g. Road closed for maintenance"></textarea></div>
-                        <input type="hidden" name="severity" value="critical">
-                        <button type="submit" class="btn btn-dark w-100"><i class="fas fa-paper-plane me-2"></i>Report Blockage</button>
-                    </form>
-                    <div id="authBlockageMsg" class="mt-2"></div>
+
+                <div class="card-body incidents-form-body">
+                    <div id="incidentPanelAccident" class="incident-form-panel active" role="tabpanel">
+                        <div class="incident-panel-intro incident-panel-intro-danger">
+                            <i class="fas fa-car-burst"></i>
+                            <div>
+                                <strong>Accident Report</strong>
+                                <p class="mb-0">Record collision or crash details at a specific road location.</p>
+                            </div>
+                        </div>
+                        <form id="authAccidentForm" class="authority-form incident-form">
+                            <div class="incident-form-grid">
+                                <div class="incident-field incident-field-full">
+                                    <label class="form-label" for="accidentSegment"><i class="fas fa-location-dot me-1 text-muted"></i>Location (Road) <span class="text-danger">*</span></label>
+                                    <select class="form-select" id="accidentSegment" name="segment_id" required>
+                                        <option value="" disabled selected>Select road in Remera Sector…</option>
+                                    </select>
+                                </div>
+                                <div class="incident-field">
+                                    <label class="form-label" for="accidentTime"><i class="fas fa-clock me-1 text-muted"></i>Accident Time <span class="text-danger">*</span></label>
+                                    <input type="datetime-local" class="form-control" id="accidentTime" name="accident_time" required>
+                                </div>
+                                <div class="incident-field">
+                                    <label class="form-label" for="accidentSeverity"><i class="fas fa-gauge-high me-1 text-muted"></i>Severity <span class="text-danger">*</span></label>
+                                    <select class="form-select" id="accidentSeverity" name="severity">
+                                        <option value="minor">Minor</option>
+                                        <option value="moderate">Moderate</option>
+                                        <option value="severe">Severe</option>
+                                        <option value="fatal">Fatal</option>
+                                    </select>
+                                </div>
+                                <div class="incident-field incident-field-full">
+                                    <label class="form-label" for="accidentCause"><i class="fas fa-align-left me-1 text-muted"></i>Description / Cause <span class="text-danger">*</span></label>
+                                    <textarea class="form-control" id="accidentCause" name="cause" rows="3" required placeholder="Describe what happened, vehicles involved, and current road impact…"></textarea>
+                                </div>
+                                <div class="incident-field">
+                                    <label class="form-label" for="accidentVehicles">Vehicles</label>
+                                    <input type="number" class="form-control" id="accidentVehicles" name="vehicles_involved" min="0" value="1">
+                                </div>
+                                <div class="incident-field">
+                                    <label class="form-label" for="accidentInjuries">Injuries</label>
+                                    <input type="number" class="form-control" id="accidentInjuries" name="injuries" min="0" value="0">
+                                    <div class="form-text">People hurt, not killed</div>
+                                </div>
+                                <div class="incident-field">
+                                    <label class="form-label" for="accidentFatalities">Fatalities</label>
+                                    <input type="number" class="form-control" id="accidentFatalities" name="fatalities" min="0" value="0">
+                                    <div class="form-text">People who died</div>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-danger incident-submit-btn w-100">
+                                <i class="fas fa-paper-plane me-2"></i>Submit Accident Report
+                            </button>
+                        </form>
+                        <div id="authAccidentMsg" class="incident-form-msg"></div>
+                    </div>
+
+                    <div id="incidentPanelCongestion" class="incident-form-panel" role="tabpanel" hidden>
+                        <div class="incident-panel-intro incident-panel-intro-warning">
+                            <i class="fas fa-traffic-light"></i>
+                            <div>
+                                <strong>Report Congestion</strong>
+                                <p class="mb-0">Alert drivers about slow or heavy traffic on a road segment.</p>
+                            </div>
+                        </div>
+                        <form id="authCongestionForm" class="authority-form incident-form">
+                            <input type="hidden" name="type" value="congestion">
+                            <div class="incident-form-grid">
+                                <div class="incident-field incident-field-full">
+                                    <label class="form-label"><i class="fas fa-road me-1 text-muted"></i>Road <span class="text-danger">*</span></label>
+                                    <select class="form-select auth-road-select" name="segment_id" required>
+                                        <option value="" disabled selected>Select road in Remera Sector…</option>
+                                    </select>
+                                </div>
+                                <div class="incident-field incident-field-full">
+                                    <label class="form-label"><i class="fas fa-layer-group me-1 text-muted"></i>Congestion Level <span class="text-danger">*</span></label>
+                                    <select class="form-select" name="severity">
+                                        <option value="info">Moderate — slower than normal</option>
+                                        <option value="warning" selected>Heavy — significant delays</option>
+                                        <option value="critical">Severe — standstill or near standstill</option>
+                                    </select>
+                                </div>
+                                <div class="incident-field incident-field-full">
+                                    <label class="form-label"><i class="fas fa-comment-dots me-1 text-muted"></i>Details <span class="text-danger">*</span></label>
+                                    <textarea class="form-control" name="message" rows="3" required placeholder="e.g. Heavy queue near roundabout; advise alternate route via KK 15"></textarea>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-warning incident-submit-btn w-100 text-dark">
+                                <i class="fas fa-paper-plane me-2"></i>Report Congestion
+                            </button>
+                        </form>
+                        <div id="authCongestionMsg" class="incident-form-msg"></div>
+                    </div>
+
+                    <div id="incidentPanelBlockage" class="incident-form-panel" role="tabpanel" hidden>
+                        <div class="incident-panel-intro incident-panel-intro-dark">
+                            <i class="fas fa-ban"></i>
+                            <div>
+                                <strong>Report Road Blockage</strong>
+                                <p class="mb-0">Notify drivers when a road is closed or not passable.</p>
+                            </div>
+                        </div>
+                        <form id="authBlockageForm" class="authority-form incident-form">
+                            <input type="hidden" name="type" value="road_blockage">
+                            <input type="hidden" name="severity" value="critical">
+                            <div class="incident-form-grid">
+                                <div class="incident-field incident-field-full">
+                                    <label class="form-label"><i class="fas fa-road me-1 text-muted"></i>Road <span class="text-danger">*</span></label>
+                                    <select class="form-select auth-road-select" name="segment_id" required>
+                                        <option value="" disabled selected>Select road in Remera Sector…</option>
+                                    </select>
+                                </div>
+                                <div class="incident-field incident-field-full">
+                                    <label class="form-label"><i class="fas fa-comment-dots me-1 text-muted"></i>Blockage Details <span class="text-danger">*</span></label>
+                                    <textarea class="form-control" name="message" rows="3" required placeholder="e.g. Road closed for maintenance until 18:00; use KG 11 alternate"></textarea>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-dark incident-submit-btn w-100">
+                                <i class="fas fa-paper-plane me-2"></i>Report Road Blockage
+                            </button>
+                        </form>
+                        <div id="authBlockageMsg" class="incident-form-msg"></div>
+                    </div>
                 </div>
             </div>
         </div>
+
         <div class="col-lg-7">
-            <div class="dashboard-card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h3 class="card-title mb-0"><i class="fas fa-list"></i> Accident Reports</h3>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshAccidents"><i class="fas fa-sync"></i></button>
+            <div class="dashboard-card incidents-list-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <h3 class="card-title mb-0"><i class="fas fa-list-check"></i> Accident Reports</h3>
+                        <small class="text-muted">Submitted accident records for Remera Sector</small>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshAccidents" title="Refresh list">
+                        <i class="fas fa-sync me-1"></i>Refresh
+                    </button>
                 </div>
-                <div id="authAccidentList" class="p-3">Loading…</div>
-            </div>
-            <div class="dashboard-card">
-                <div class="card-header"><h3 class="card-title mb-0"><i class="fas fa-screwdriver-wrench"></i> Quick Road Status Mark</h3></div>
-                <div class="card-body">
-                    <form id="authQuickStatusForm" class="row g-3 align-items-end">
-                        <div class="col-md-5"><label class="form-label">Road</label><select class="form-select auth-road-select" name="segment_id" required></select></div>
-                        <div class="col-md-4"><label class="form-label">Status</label>
-                            <select class="form-select" name="road_status" required>
-                                <option value="normal">Normal</option>
-                                <option value="congested">Congested</option>
-                                <option value="blocked">Blocked</option>
-                                <option value="maintenance">Under Maintenance</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Apply</button></div>
-                        <div class="col-12"><input type="text" class="form-control" name="status_note" placeholder="Optional note for drivers"></div>
-                    </form>
-                    <div id="authQuickStatusMsg" class="mt-2"></div>
-                </div>
+                <div id="authAccidentList" class="incidents-list-body p-3">Loading…</div>
             </div>
         </div>
     </div>
@@ -268,70 +342,115 @@ try {
 
 <!-- Authority: Notifications -->
 <div id="notifications-section" class="content-section authority-section" style="display:none;">
-    <div class="row g-4">
-        <div class="col-lg-5">
-            <div class="dashboard-card">
-                <div class="card-header"><h3 class="card-title mb-0"><i class="fas fa-bullhorn"></i> Send Notification</h3></div>
-                <div class="card-body">
-                    <form id="authNotifyForm">
-                        <div class="mb-3"><label class="form-label">Road</label><select class="form-select auth-road-select" name="segment_id" required></select></div>
-                        <div class="mb-3"><label class="form-label">Alert Type</label>
-                            <select class="form-select" name="type">
-                                <option value="congestion">Traffic Congestion</option>
-                                <option value="incident">Accident / Incident</option>
-                                <option value="road_blockage">Road Blockage</option>
-                                <option value="system">Road Maintenance</option>
-                            </select>
-                        </div>
-                        <div class="mb-3"><label class="form-label">Severity</label>
-                            <select class="form-select" name="severity">
-                                <option value="info">Info</option>
-                                <option value="warning" selected>Warning</option>
-                                <option value="critical">Critical</option>
-                            </select>
-                        </div>
-                        <div class="mb-3"><label class="form-label">Message for Drivers</label><textarea class="form-control" name="message" rows="3" required placeholder="Include alternative route advice if possible"></textarea></div>
-                        <button type="submit" class="btn btn-dark w-100"><i class="fas fa-paper-plane me-2"></i>Send Alert</button>
-                    </form>
-                    <div id="authNotifyMsg" class="mt-2"></div>
-                </div>
+    <div class="dashboard-card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h3 class="card-title mb-0"><i class="fas fa-bell"></i> Notifications & Alerts</h3>
+            <div class="d-flex align-items-center gap-2">
+                <small class="text-muted" id="authAlertsRefreshed"></small>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshAuthAlerts"><i class="fas fa-sync me-1"></i>Refresh</button>
             </div>
         </div>
-        <div class="col-lg-7">
-            <div class="dashboard-card">
-                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <h3 class="card-title mb-0"><i class="fas fa-bell"></i> Notifications & Alerts</h3>
-                    <div class="d-flex align-items-center gap-2">
-                        <small class="text-muted" id="authAlertsRefreshed"></small>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshAuthAlerts"><i class="fas fa-sync me-1"></i>Refresh</button>
-                    </div>
-                </div>
-                <div id="authAlertsList" class="driver-feed p-3">Loading…</div>
-            </div>
-        </div>
+        <div id="authAlertsList" class="driver-feed p-3">Loading…</div>
     </div>
 </div>
 
 <!-- Authority: Reports -->
 <div id="reports-section" class="content-section authority-section" style="display:none;">
-    <div class="dashboard-card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <h3 class="card-title mb-0"><i class="fas fa-chart-pie"></i> Traffic Reports</h3>
-            <div class="btn-group btn-group-sm" role="group" id="authReportPeriod">
-                <button type="button" class="btn btn-outline-dark active" data-period="daily">Daily</button>
-                <button type="button" class="btn btn-outline-dark" data-period="weekly">Weekly</button>
-                <button type="button" class="btn btn-outline-dark" data-period="monthly">Monthly</button>
+    <div class="auth-reports-page">
+        <div class="auth-reports-hero mb-4">
+            <div class="auth-reports-hero-text">
+                <h2 class="auth-reports-title mb-1"><i class="fas fa-chart-line me-2"></i>Traffic Reports</h2>
+                <p class="text-muted mb-0" id="authReportPeriodLabel">Sector activity and incident overview for Remera</p>
+            </div>
+            <div class="auth-reports-hero-actions d-flex flex-wrap align-items-center gap-2">
+                <div class="btn-group btn-group-sm auth-report-period-toggle" role="group" id="authReportPeriod" aria-label="Report period">
+                    <button type="button" class="btn btn-outline-dark active" data-period="daily">Today</button>
+                    <button type="button" class="btn btn-outline-dark" data-period="weekly">7 Days</button>
+                    <button type="button" class="btn btn-outline-dark" data-period="monthly">30 Days</button>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnExportAuthReport">
+                    <i class="fas fa-download me-1"></i>Export CSV
+                </button>
             </div>
         </div>
-        <div class="card-body">
-            <div class="row g-4">
-                <div class="col-md-6"><canvas id="authReportReadingsChart" height="220"></canvas></div>
-                <div class="col-md-6"><canvas id="authReportAlertsChart" height="220"></canvas></div>
+
+        <div class="row g-3 mb-4" id="authReportKpis">
+            <div class="col-6 col-lg-3">
+                <div class="auth-report-kpi">
+                    <div class="auth-report-kpi-icon kpi-readings"><i class="fas fa-road"></i></div>
+                    <div class="auth-report-kpi-value" id="authKpiReadings">—</div>
+                    <div class="auth-report-kpi-label">Road Updates</div>
+                </div>
             </div>
-            <div class="mt-3 d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnExportAuthReport"><i class="fas fa-download me-1"></i>Export CSV</button>
+            <div class="col-6 col-lg-3">
+                <div class="auth-report-kpi">
+                    <div class="auth-report-kpi-icon kpi-accidents"><i class="fas fa-car-burst"></i></div>
+                    <div class="auth-report-kpi-value" id="authKpiAccidents">—</div>
+                    <div class="auth-report-kpi-label">Accidents</div>
+                </div>
             </div>
-            <div id="authReportSummary" class="mt-3 small text-muted"></div>
+            <div class="col-6 col-lg-3">
+                <div class="auth-report-kpi">
+                    <div class="auth-report-kpi-icon kpi-alerts"><i class="fas fa-bell"></i></div>
+                    <div class="auth-report-kpi-value" id="authKpiAlerts">—</div>
+                    <div class="auth-report-kpi-label">Traffic Alerts</div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="auth-report-kpi">
+                    <div class="auth-report-kpi-icon kpi-blocked"><i class="fas fa-ban"></i></div>
+                    <div class="auth-report-kpi-value" id="authKpiBlockages">—</div>
+                    <div class="auth-report-kpi-label">Road Blockages</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <div class="dashboard-card auth-report-chart-card h-100">
+                    <div class="card-header">
+                        <h3 class="card-title mb-0"><i class="fas fa-chart-area"></i> Daily Activity</h3>
+                        <small class="text-muted">Road status updates vs traffic alerts</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="auth-chart-wrap auth-chart-wrap-lg">
+                            <canvas id="authReportActivityChart" aria-label="Daily activity chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="dashboard-card auth-report-chart-card h-100">
+                    <div class="card-header">
+                        <h3 class="card-title mb-0"><i class="fas fa-chart-pie"></i> Alerts by Type</h3>
+                        <small class="text-muted">Share of incident categories</small>
+                    </div>
+                    <div class="card-body d-flex flex-column">
+                        <div class="auth-chart-wrap auth-chart-wrap-donut flex-grow-1">
+                            <canvas id="authReportAlertsChart" aria-label="Alerts breakdown chart"></canvas>
+                        </div>
+                        <div id="authReportAlertLegend" class="auth-report-type-legend mt-2"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="dashboard-card auth-report-chart-card">
+                    <div class="card-header">
+                        <h3 class="card-title mb-0"><i class="fas fa-chart-column"></i> Road Status Updates</h3>
+                        <small class="text-muted">Police readings recorded per day</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="auth-chart-wrap">
+                            <canvas id="authReportReadingsChart" aria-label="Road readings chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="authReportSummary" class="auth-report-footnote mt-3"></div>
+        <div id="authReportLoading" class="auth-report-loading d-none">
+            <i class="fas fa-spinner fa-spin me-2"></i>Loading report data…
         </div>
     </div>
 </div>

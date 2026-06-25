@@ -64,7 +64,7 @@ $is_authority = $road_status_mode === 'authority';
     <div class="dashboard-card road-table-card">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
-                <h3 class="card-title mb-0"><i class="fas fa-table-list"></i> Road Status Register</h3>
+                <h3 class="card-title mb-0"><i class="fas fa-table-list"></i> Road Status</h3>
                 <small class="text-muted">Remera Sector — evaluate traffic flow, speed, and road condition at a glance</small>
             </div>
             <span class="badge bg-light text-dark border" id="roadTableCountBadge">0 roads</span>

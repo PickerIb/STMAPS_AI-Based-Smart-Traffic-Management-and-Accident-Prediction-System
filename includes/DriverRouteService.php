@@ -161,13 +161,15 @@ class DriverRouteService
                 ORDER BY rs.name ASC";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute([':zone' => self::STUDY_ZONE]);
-        $alertStmt = $this->conn->query(
+        $alertStmt = $this->conn->prepare(
             "SELECT segment_id, type, severity, message, alert_time
              FROM alerts
              WHERE segment_id IS NOT NULL
+               AND is_acknowledged = 0
                AND alert_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
              ORDER BY alert_time DESC"
         );
+        $alertStmt->execute();
         $latestAlertBySegment = [];
         foreach ($alertStmt->fetchAll(PDO::FETCH_ASSOC) as $alert) {
             $sid = (int)$alert['segment_id'];
@@ -181,33 +183,39 @@ class DriverRouteService
             $status = $this->deriveSegmentStatus($row);
             $segmentId = (int)$row['id'];
             $reason = null;
+            $readingTs = !empty($row['reading_time'])
+                ? (self::parseReadingTimestamp((string)$row['reading_time']) ?? 0)
+                : 0;
 
             if (isset($latestAlertBySegment[$segmentId])) {
                 $alert = $latestAlertBySegment[$segmentId];
-                if ($alert['type'] === 'road_blockage') {
-                    $status = ['status' => 'blocked', 'congestion_level' => 'severe', 'label' => 'Blocked road'];
-                    $reason = $alert['message'];
-                } elseif ($alert['type'] === 'incident') {
-                    $status = ['status' => 'issue', 'congestion_level' => 'high', 'label' => 'Incident reported'];
-                    $reason = $alert['message'];
-                } elseif ($alert['type'] === 'system' && in_array($alert['severity'], ['warning', 'danger'], true)) {
-                    $status = ['status' => 'issue', 'congestion_level' => 'high', 'label' => 'Road issue reported'];
-                    $reason = $alert['message'];
+                $alertTs = self::parseReadingTimestamp((string)$alert['alert_time']) ?? 0;
+                $alertType = (string)($alert['type'] ?? '');
+
+                if ($alertType === 'road_blockage') {
+                    $status = $this->statusFromAlert($alert);
+                    $reason = (string)$alert['message'];
+                } elseif ($alertType === 'incident' && ($readingTs === 0 || $alertTs >= $readingTs)) {
+                    $status = $this->statusFromAlert($alert);
+                    $reason = (string)$alert['message'];
+                } else {
+                    $readingIsCurrent = $readingTs > 0 && $readingTs >= $alertTs;
+
+                    if (!$readingIsCurrent) {
+                        $status = $this->statusFromAlert($alert);
+                        $reason = (string)$alert['message'];
+                    } elseif (trim((string)$alert['message']) !== '' && $alertTs >= $readingTs - 60) {
+                        // Officer note saved with the same reading — show note, keep reading-based status.
+                        $reason = (string)$alert['message'];
+                    }
                 }
             }
 
-            if ($reason === null) {
-                if ($status['status'] === 'normal') {
-                    $reason = 'Traffic is flowing normally';
-                } elseif ($status['congestion_level'] === 'moderate') {
-                    $reason = 'Moderate traffic volume';
-                } elseif ($status['congestion_level'] === 'high') {
-                    $reason = 'High congestion due to vehicle build-up';
-                } elseif ($status['congestion_level'] === 'severe') {
-                    $reason = 'Very slow movement reported on this road';
-                } else {
-                    $reason = 'Status updated from latest traffic reading';
-                }
+            $pairedNote = $this->findOfficerNoteNearReading($segmentId, $row['reading_time'] ?? null);
+            if ($pairedNote !== null) {
+                $reason = $pairedNote;
+            } elseif ($reason === null || trim((string)$reason) === '') {
+                $reason = '—';
             }
 
             $segments[] = [
@@ -244,6 +252,10 @@ class DriverRouteService
             return ['status' => 'normal', 'congestion_level' => 'low', 'label' => 'Normal traffic'];
         }
 
+        if ((float)$speed <= 0.01 && ($vehicles === null || (int)$vehicles === 0)) {
+            return ['status' => 'blocked', 'congestion_level' => 'severe', 'label' => 'Blocked road'];
+        }
+
         $ratio = $speed / max($limit, 1);
         if ($ratio >= 0.75) {
             return ['status' => 'normal', 'congestion_level' => 'low', 'label' => 'Normal traffic'];
@@ -255,6 +267,100 @@ class DriverRouteService
             return ['status' => 'congested', 'congestion_level' => 'high', 'label' => 'Heavy congestion'];
         }
         return ['status' => 'congested', 'congestion_level' => 'severe', 'label' => 'Severe congestion'];
+    }
+
+    private function findOfficerNoteNearReading(int $segmentId, ?string $readingTime, int $windowSeconds = 180): ?string
+    {
+        if ($segmentId <= 0) {
+            return null;
+        }
+
+        $stmt = $this->conn->prepare(
+            "SELECT message, alert_time
+             FROM alerts
+             WHERE segment_id = :sid AND TRIM(message) <> ''
+             ORDER BY alert_time DESC
+             LIMIT 20"
+        );
+        $stmt->execute([':sid' => $segmentId]);
+        $alerts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($alerts === []) {
+            return null;
+        }
+
+        $readingTs = ($readingTime !== null && $readingTime !== '')
+            ? self::parseReadingTimestamp((string)$readingTime)
+            : null;
+
+        if ($readingTs !== null) {
+            foreach ($alerts as $alert) {
+                $msg = trim((string)($alert['message'] ?? ''));
+                if ($msg === '') {
+                    continue;
+                }
+                $alertTs = self::parseReadingTimestamp((string)$alert['alert_time']) ?? 0;
+                if (abs($alertTs - $readingTs) <= $windowSeconds) {
+                    return $msg;
+                }
+            }
+        }
+
+        return trim((string)($alerts[0]['message'] ?? '')) ?: null;
+    }
+
+    private function adviceToneForStatus(string $status, string $level): string
+    {
+        if ($status === 'blocked' || $level === 'severe') {
+            return 'danger';
+        }
+        if ($status === 'issue' || $level === 'high') {
+            return 'warning';
+        }
+        if ($level === 'moderate') {
+            return 'caution';
+        }
+
+        return 'safe';
+    }
+
+    private function statusFromAlert(array $alert): array
+    {
+        $type = (string)($alert['type'] ?? '');
+        if ($type === 'road_blockage') {
+            return ['status' => 'blocked', 'congestion_level' => 'severe', 'label' => 'Blocked road'];
+        }
+        if ($type === 'incident') {
+            return ['status' => 'issue', 'congestion_level' => 'high', 'label' => 'Incident reported'];
+        }
+        if ($type === 'congestion') {
+            $severityMap = [
+                'info' => ['status' => 'congested', 'congestion_level' => 'moderate', 'label' => 'Moderate congestion'],
+                'warning' => ['status' => 'congested', 'congestion_level' => 'high', 'label' => 'Heavy congestion'],
+                'critical' => ['status' => 'congested', 'congestion_level' => 'severe', 'label' => 'Severe congestion'],
+            ];
+            return $severityMap[$alert['severity'] ?? 'warning'] ?? $severityMap['warning'];
+        }
+        if ($type === 'system' && in_array($alert['severity'] ?? '', ['warning', 'danger', 'critical'], true)) {
+            return ['status' => 'issue', 'congestion_level' => 'high', 'label' => 'Road issue reported'];
+        }
+
+        return ['status' => 'normal', 'congestion_level' => 'low', 'label' => 'Normal traffic'];
+    }
+
+    private function supersedeOlderSegmentAlerts(int $segmentId, string $readingTimeDb, int $userId): void
+    {
+        $stmt = $this->conn->prepare(
+            "UPDATE alerts
+             SET is_acknowledged = 1, acknowledged_by = :uid, acknowledged_at = NOW()
+             WHERE segment_id = :segment_id
+               AND is_acknowledged = 0
+               AND alert_time < :reading_time"
+        );
+        $stmt->execute([
+            ':uid' => $userId,
+            ':segment_id' => $segmentId,
+            ':reading_time' => $readingTimeDb,
+        ]);
     }
 
     public function getRoadStatusSummary(): array
@@ -292,9 +398,7 @@ class DriverRouteService
              GROUP BY type"
         );
         foreach ($alertStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            if ($row['type'] === 'road_blockage') {
-                $summary['blocked'] = max($summary['blocked'], (int)$row['cnt']);
-            } elseif ($row['type'] === 'incident') {
+            if ($row['type'] === 'incident') {
                 $summary['accidents'] += (int)$row['cnt'];
                 $summary['road_issues'] += (int)$row['cnt'];
             }
@@ -450,14 +554,17 @@ class DriverRouteService
 
             $status = $this->deriveSegmentStatus($row);
             $weather = ucfirst((string)($row['weather'] ?? 'unknown'));
-            $message = sprintf(
-                'Traffic police updated %s — %s, %d vehicles, %.1f km/h avg, %s weather.',
-                $row['segment_name'],
-                $status['label'],
-                (int)$row['vehicle_count'],
-                (float)$row['avg_speed_kmh'],
-                $weather
-            );
+            $officerNote = $this->findOfficerNoteNearReading($segmentId, (string)$row['reading_time']);
+            $message = $officerNote !== null && $officerNote !== ''
+                ? $officerNote
+                : sprintf(
+                    'Traffic police updated %s — %s, %d vehicles, %.1f km/h avg, %s weather.',
+                    $row['segment_name'],
+                    $status['label'],
+                    (int)$row['vehicle_count'],
+                    (float)$row['avg_speed_kmh'],
+                    $weather
+                );
 
             $severity = in_array($status['congestion_level'], ['high', 'severe'], true) ? 'warning' : 'info';
             if ($status['status'] === 'blocked') {
@@ -496,6 +603,12 @@ class DriverRouteService
             $type = (string)($row['type'] ?? 'system');
 
             if ($type === 'congestion' && isset($roadMinuteKeys[$segmentId . ':' . intdiv($ts, 60)])) {
+                continue;
+            }
+            if ($type === 'road_blockage' && isset($roadMinuteKeys[$segmentId . ':' . intdiv($ts, 60)])) {
+                continue;
+            }
+            if ($type === 'system' && isset($roadMinuteKeys[$segmentId . ':' . intdiv($ts, 60)])) {
                 continue;
             }
 
@@ -1276,15 +1389,17 @@ class DriverRouteService
             ':source' => 'traffic_police',
         ]);
 
+        $this->supersedeOlderSegmentAlerts($segmentId, $readingTimeDb, $userId);
+
         if ($statusNote !== '') {
             $alertStmt = $this->conn->prepare(
                 "INSERT INTO alerts (segment_id, alert_time, type, severity, message, is_acknowledged)
-                 VALUES (:segment_id, :alert_time, 'congestion', 'info', :message, 0)"
+                 VALUES (:segment_id, :alert_time, 'system', 'info', :message, 0)"
             );
             $alertStmt->execute([
                 ':segment_id' => $segmentId,
                 ':alert_time' => $readingTimeDb,
-                ':message' => $statusNote,
+                ':message' => mb_substr($statusNote, 0, 255),
             ]);
         }
 
@@ -1323,6 +1438,13 @@ class DriverRouteService
         $weather = strtolower((string)($seg['weather'] ?? ''));
         $reason = trim((string)($seg['reason'] ?? ''));
 
+        if ($reason !== '' && $reason !== '—') {
+            return [
+                'text' => $reason,
+                'tone' => $this->adviceToneForStatus($status, $level),
+            ];
+        }
+
         if ($status === 'blocked') {
             return [
                 'text' => 'Do not use this road — it is blocked. Choose an alternate route.',
@@ -1331,11 +1453,7 @@ class DriverRouteService
         }
 
         if ($status === 'issue') {
-            $text = 'Proceed with extra caution or use an alternate route.';
-            if ($reason !== '') {
-                $text .= ' ' . $reason;
-            }
-            return ['text' => $text, 'tone' => 'warning'];
+            return ['text' => 'Proceed with extra caution or use an alternate route.', 'tone' => 'warning'];
         }
 
         $weatherNote = '';
@@ -1679,7 +1797,10 @@ class DriverRouteService
             return ['success' => false, 'message' => 'Accident time is not valid.'];
         }
 
-        $message = $cause !== '' ? $cause : 'Accident reported on ' . $segment['name'];
+        $messageParts = array_values(array_filter([$cause, $notes], static fn ($part) => trim((string)$part) !== ''));
+        $message = $messageParts !== []
+            ? implode(' — ', $messageParts)
+            : ('Accident reported on ' . $segment['name']);
         $alertSeverity = in_array($severity, ['severe', 'fatal'], true) ? 'critical' : 'warning';
 
         $stmt = $this->conn->prepare(
@@ -1733,6 +1854,7 @@ class DriverRouteService
         $message = trim((string)($data['message'] ?? ''));
         $severity = strtolower(trim((string)($data['severity'] ?? 'warning')));
         $alertTime = trim((string)($data['alert_time'] ?? ''));
+        $syncStatus = !array_key_exists('sync_status', $data) || (int)$data['sync_status'] === 1;
 
         $allowedTypes = ['congestion', 'road_blockage', 'system', 'incident'];
         if (!in_array($type, $allowedTypes, true)) {
@@ -1771,6 +1893,34 @@ class DriverRouteService
         ]);
         $alertId = (int)$this->conn->lastInsertId();
 
+        // Keep driver road status in sync with incident alerts (real-time behavior).
+        if ($syncStatus && in_array($type, ['congestion', 'road_blockage', 'system'], true)) {
+            $levelBySeverity = ['info' => 'moderate', 'warning' => 'high', 'critical' => 'severe'];
+            $status = 'congested';
+            $level = $levelBySeverity[$severity] ?? 'high';
+            if ($type === 'road_blockage') {
+                $status = 'blocked';
+                $level = 'severe';
+            } elseif ($type === 'system') {
+                $status = 'maintenance';
+                $level = 'high';
+            }
+
+            $speedLimit = (int)($segment['speed_limit_kmh'] ?? 50);
+            $metrics = $this->trafficMetricsForOfficerUpdate($status, $level, $speedLimit);
+            $this->submitTrafficReading($userId, [
+                'segment_id' => $segmentId,
+                'reading_time' => $alertTimeDb,
+                'vehicle_count' => $metrics['vehicle_count'],
+                'avg_speed_kmh' => $metrics['avg_speed_kmh'],
+                'density_veh_per_km' => max(10, (int)round($metrics['vehicle_count'] / 2)),
+                'weather' => 'unknown',
+                'status_note' => '',
+            ]);
+        } else {
+            $this->supersedeOlderSegmentAlerts($segmentId, $alertTimeDb, $userId);
+        }
+
         $this->writeAuditLog($userId, 'alert_report', 'alerts', $alertId, [
             'segment_id' => $segmentId,
             'segment_name' => $segment['name'],
@@ -1779,10 +1929,33 @@ class DriverRouteService
             'message' => $message,
         ]);
 
+        $smsDispatch = null;
+        $smsDriverCount = 0;
+        if ($type === 'road_blockage') {
+            require_once __DIR__ . '/sms_helpers.php';
+            $smsDriverCount = strgs_count_sms_eligible_drivers($this->conn);
+            $smsDispatch = [
+                'road' => (string)$segment['name'],
+                'details' => $message,
+            ];
+        }
+
+        $responseMessage = 'Alert sent to drivers successfully.';
+        if ($type === 'road_blockage') {
+            $responseMessage = 'Road blocked. Drivers notified in the app.';
+            if ($smsDriverCount > 0) {
+                $responseMessage .= ' SMS is being sent to ' . $smsDriverCount . ' driver(s).';
+            } else {
+                $responseMessage .= ' No driver phone numbers found for SMS.';
+            }
+        }
+
         return [
             'success' => true,
-            'message' => 'Alert sent to drivers successfully.',
+            'message' => $responseMessage,
             'alert_id' => $alertId,
+            'sms_dispatch' => $smsDispatch,
+            'sms_driver_count' => $smsDriverCount,
         ];
     }
 
@@ -1861,7 +2034,12 @@ class DriverRouteService
     {
         $stmt = $this->conn->prepare(
             "SELECT a.id, a.accident_time, a.severity, a.cause, a.notes, a.vehicles_involved,
-                    a.injuries, a.fatalities, rs.name AS segment_name, rs.zone
+                    a.injuries, a.fatalities, rs.name AS segment_name, rs.zone,
+                    (SELECT COUNT(*) + 1
+                     FROM accidents a_num
+                     WHERE a_num.accident_time > a.accident_time
+                        OR (a_num.accident_time = a.accident_time AND a_num.id > a.id)
+                    ) AS report_number
              FROM accidents a
              INNER JOIN road_segments rs ON rs.id = a.segment_id
              ORDER BY a.accident_time DESC
@@ -1873,6 +2051,7 @@ class DriverRouteService
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as &$row) {
             $row['is_resolved'] = stripos((string)($row['notes'] ?? ''), 'resolved') !== false;
+            $row['report_number'] = (int)($row['report_number'] ?? 0);
         }
         unset($row);
         return $rows;
@@ -1908,6 +2087,17 @@ class DriverRouteService
         $alertStmt->execute();
         $alerts = $alertStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $timelineStmt = $this->conn->prepare(
+            "SELECT DATE(alert_time) AS day, COUNT(*) AS cnt
+             FROM alerts
+             WHERE alert_time >= DATE_SUB(NOW(), INTERVAL :days DAY)
+             GROUP BY DATE(alert_time)
+             ORDER BY day ASC"
+        );
+        $timelineStmt->bindValue(':days', $interval === 1 ? 1 : ($interval === 7 ? 7 : 30), PDO::PARAM_INT);
+        $timelineStmt->execute();
+        $alertsTimeline = $timelineStmt->fetchAll(PDO::FETCH_ASSOC);
+
         $accStmt = $this->conn->prepare(
             "SELECT COUNT(*) AS cnt FROM accidents
              WHERE accident_time >= DATE_SUB(NOW(), INTERVAL :days DAY)"
@@ -1916,11 +2106,41 @@ class DriverRouteService
         $accStmt->execute();
         $accidents = (int)$accStmt->fetch(PDO::FETCH_ASSOC)['cnt'];
 
+        $blockages = 0;
+        $congestion = 0;
+        $incidents = 0;
+        $maintenance = 0;
+        foreach ($alerts as $row) {
+            $type = (string)($row['type'] ?? '');
+            $cnt = (int)($row['cnt'] ?? 0);
+            if ($type === 'road_blockage') {
+                $blockages = $cnt;
+            } elseif ($type === 'congestion') {
+                $congestion = $cnt;
+            } elseif ($type === 'incident') {
+                $incidents = $cnt;
+            } elseif ($type === 'system') {
+                $maintenance = $cnt;
+            }
+        }
+
         return [
             'period' => $period,
+            'period_label' => match ($period) {
+                'weekly' => 'Last 7 days',
+                'monthly' => 'Last 30 days',
+                default => 'Today',
+            },
             'road_readings' => $readings,
             'alerts_by_type' => $alerts,
+            'alerts_timeline' => $alertsTimeline,
             'accident_count' => $accidents,
+            'total_readings' => array_sum(array_map(static fn($r) => (int)($r['cnt'] ?? 0), $readings)),
+            'total_alerts' => array_sum(array_map(static fn($a) => (int)($a['cnt'] ?? 0), $alerts)),
+            'blockage_count' => $blockages,
+            'congestion_count' => $congestion,
+            'incident_alert_count' => $incidents,
+            'maintenance_count' => $maintenance,
             'summary' => $this->getAuthorityDashboardStats(0),
         ];
     }
@@ -1955,14 +2175,15 @@ class DriverRouteService
 
         $speedLimit = (int)($segment['speed_limit_kmh'] ?? 50);
         $metrics = $this->trafficMetricsForOfficerUpdate($status, $congestionLevel, $speedLimit);
+        $readingTimeIso = date('Y-m-d\TH:i');
         $readingData = [
             'segment_id' => $segmentId,
-            'reading_time' => date('Y-m-d\TH:i'),
+            'reading_time' => $readingTimeIso,
             'vehicle_count' => $metrics['vehicle_count'],
             'avg_speed_kmh' => $metrics['avg_speed_kmh'],
             'density_veh_per_km' => max(10, (int)round($metrics['vehicle_count'] / 2)),
             'weather' => 'clear',
-            'status_note' => '',
+            'status_note' => in_array($status, ['blocked', 'congested', 'maintenance'], true) ? '' : $note,
         ];
 
         $result = $this->submitTrafficReading($userId, $readingData);
@@ -1970,43 +2191,57 @@ class DriverRouteService
             return $result;
         }
 
+        $smsDispatch = null;
+        $alertResult = [];
         if ($status === 'blocked') {
-            $this->reportTrafficAlert($userId, [
+            $blockMsg = $note !== '' ? $note : ('Road blocked — ' . $segment['name']);
+            $alertResult = $this->reportTrafficAlert($userId, [
                 'segment_id' => $segmentId,
                 'type' => 'road_blockage',
                 'severity' => 'critical',
-                'message' => $note !== '' ? $note : 'Road marked blocked — ' . $segment['name'],
-                'alert_time' => date('Y-m-d\TH:i'),
+                'message' => $blockMsg,
+                'alert_time' => $readingTimeIso,
+                'sync_status' => 0,
             ]);
+            $smsDispatch = $alertResult['sms_dispatch'] ?? null;
         } elseif ($status === 'maintenance') {
+            $maintMsg = $note !== '' ? $note : ('Road under maintenance — ' . $segment['name']);
             $this->reportTrafficAlert($userId, [
                 'segment_id' => $segmentId,
                 'type' => 'system',
                 'severity' => 'warning',
-                'message' => $note !== '' ? $note : 'Road under maintenance — ' . $segment['name'],
-                'alert_time' => date('Y-m-d\TH:i'),
-            ]);
-        } elseif ($note !== '') {
-            $this->reportTrafficAlert($userId, [
-                'segment_id' => $segmentId,
-                'type' => 'congestion',
-                'severity' => in_array($congestionLevel, ['high', 'severe'], true) ? 'warning' : 'info',
-                'message' => $note,
-                'alert_time' => date('Y-m-d\TH:i'),
+                'message' => $maintMsg,
+                'alert_time' => $readingTimeIso,
+                'sync_status' => 0,
             ]);
         } elseif ($status === 'congested') {
+            $congMsg = $note !== '' ? $note : ('Road congested — ' . $segment['name']);
             $this->reportTrafficAlert($userId, [
                 'segment_id' => $segmentId,
                 'type' => 'congestion',
                 'severity' => in_array($congestionLevel, ['high', 'severe'], true) ? 'warning' : 'info',
-                'message' => 'Road marked congested — ' . $segment['name'],
-                'alert_time' => date('Y-m-d\TH:i'),
+                'message' => $congMsg,
+                'alert_time' => $readingTimeIso,
+                'sync_status' => 0,
             ]);
+        }
+
+        $resultMessage = 'Road status updated for ' . $segment['name'] . '.';
+        if ($status === 'blocked') {
+            $driverCount = is_array($smsDispatch) ? (int)($alertResult['sms_driver_count'] ?? 0) : 0;
+            $resultMessage = 'Road blocked. Drivers notified in the app.';
+            if ($driverCount > 0) {
+                $resultMessage .= ' SMS is being sent to ' . $driverCount . ' driver(s).';
+            } else {
+                $resultMessage .= ' No driver phone numbers found for SMS.';
+            }
         }
 
         return [
             'success' => true,
-            'message' => 'Road status updated for ' . $segment['name'] . '.',
+            'message' => $resultMessage,
+            'segment_id' => $segmentId,
+            'sms_dispatch' => $smsDispatch,
         ];
     }
 

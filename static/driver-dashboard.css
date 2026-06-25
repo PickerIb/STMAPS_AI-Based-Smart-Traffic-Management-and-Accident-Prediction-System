@@ -226,7 +226,7 @@
 .status-pill.high { background: #fed7aa; color: #9a3412; }
 .status-pill.severe { background: #fecaca; color: #991b1b; }
 .status-pill.normal { background: #e0e7ff; color: #3730a3; }
-.status-pill.blocked { background: #1f2937; color: #fff; }
+.status-pill.blocked { background: #fee2e2; color: #991b1b; }
 
 .route-option {
     padding: 1rem;
@@ -510,7 +510,7 @@
 .legend-normal { background: #22c55e; }
 .legend-congested { background: #f59e0b; }
 .legend-heavy { background: #f97316; }
-.legend-severe { background: #dc2626; }
+.legend-severe { background: #b91c1c; }
 
 .remera-zone-label {
     background: rgba(17, 24, 39, 0.88);
@@ -740,7 +740,7 @@
 .road-row-normal { box-shadow: inset 4px 0 0 #22c55e; }
 .road-row-congested, .road-row-moderate { box-shadow: inset 4px 0 0 #f59e0b; }
 .road-row-heavy, .road-row-high { box-shadow: inset 4px 0 0 #f97316; }
-.road-row-severe, .road-row-blocked { box-shadow: inset 4px 0 0 #dc2626; }
+.road-row-severe, .road-row-blocked { box-shadow: inset 4px 0 0 #b91c1c; }
 .road-row-issues { box-shadow: inset 4px 0 0 #8b5cf6; }
 
 .road-name-col {
