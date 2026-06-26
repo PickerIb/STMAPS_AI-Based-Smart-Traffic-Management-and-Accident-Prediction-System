@@ -48,6 +48,9 @@ ini_set('display_errors', 1);
 define('APP_TIMEZONE', 'Africa/Kigali');
 date_default_timezone_set(APP_TIMEZONE);
 
+require_once __DIR__ . '/includes/system_settings.php';
+strgs_apply_system_timezone();
+
 // Session Configuration
 ini_set('session.cookie_httponly', 1);
 ini_set('session.use_only_cookies', 1);
@@ -102,6 +105,7 @@ function requireGuest() {
 
 function requireDriver() {
     requireLogin();
+    strgs_block_if_maintenance($_SESSION['user_type'] ?? '');
     if (($_SESSION['user_type'] ?? '') !== 'driver') {
         http_response_code(403);
         echo json_encode(['success' => false, 'message' => 'Driver access only']);
@@ -111,9 +115,19 @@ function requireDriver() {
 
 function requireAuthority() {
     requireLogin();
+    strgs_block_if_maintenance($_SESSION['user_type'] ?? '');
     if (($_SESSION['user_type'] ?? '') !== 'traffic_authority') {
         http_response_code(403);
         echo json_encode(['success' => false, 'message' => 'Traffic police access only']);
+        exit();
+    }
+}
+
+function requireAdmin() {
+    requireLogin();
+    if (($_SESSION['user_type'] ?? '') !== 'administrator') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Administrator access only']);
         exit();
     }
 }

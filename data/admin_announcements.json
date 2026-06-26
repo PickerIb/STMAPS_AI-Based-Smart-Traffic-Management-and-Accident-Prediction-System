@@ -1,0 +1,11 @@
+[
+    {
+        "id": "ann-1782470917-1973",
+        "title": "System Maintenance",
+        "message": "Dear all STRGS Users today system is not working from 12:00 AM to 5:00 AM due to maintenance be patient.",
+        "severity": "critical",
+        "emergency": true,
+        "created_at": "2026-06-26 12:48:37",
+        "created_by": 9
+    }
+]

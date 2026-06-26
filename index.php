@@ -1,6 +1,7 @@
 <?php
 // Include config first to set session configuration
 require_once 'config.php';
+require_once __DIR__ . '/includes/audit_helpers.php';
 session_start();
 $smsConfig = null;
 if (file_exists(__DIR__ . '/sms_settings.php')) {
@@ -708,6 +709,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                     if ($userFound && $user->verifyPassword($password)) {
                         $storedType = resolveUserTypeFromUser($user);
+                        if (strgs_is_maintenance_mode() && $storedType !== 'administrator') {
+                            echo json_encode([
+                                'success' => false,
+                                'message' => 'System is under maintenance. Only administrators can sign in right now.',
+                            ]);
+                            exit;
+                        }
                         if ($storedType !== $user_type) {
                             echo json_encode([
                                 'success' => false,
@@ -716,9 +724,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             exit;
                         }
                         if ($user->is_active) {
-                            // Update last login
                             $user->updateLastLogin();
-                            
+
+                            strgs_log_audit_event($db, (int)$user->id, 'login', 'users', (int)$user->id, [
+                                'email' => $user->email,
+                                'username' => $user->username,
+                                'user_type' => $storedType,
+                            ]);
+
                             // Set session variables
                             $displayName = trim((string)($user->first_name ?? '') . ' ' . (string)($user->last_name ?? ''));
                             if ($displayName === '') {
@@ -1379,6 +1392,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $up->bindParam(':id', $userId, PDO::PARAM_INT);
                 $up->execute();
 
+                strgs_log_audit_event($db, $userId, 'password_change', 'users', $userId, [
+                    'email' => $_SESSION['user_email'] ?? null,
+                    'user_type' => $_SESSION['user_type'] ?? null,
+                ]);
+
                 echo json_encode(['success' => true]);
             } catch (Exception $e) {
                 echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -1419,6 +1437,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         case 'driver_segments_map':
             require_once __DIR__ . '/includes/authority_api_handlers.php';
             handleAuthorityApiAction($_POST['action']);
+            break;
+
+        case 'admin_home':
+        case 'admin_users':
+        case 'admin_create_user':
+        case 'admin_update_user':
+        case 'admin_toggle_user':
+        case 'admin_delete_user':
+        case 'admin_reset_password':
+        case 'admin_traffic_monitoring':
+        case 'admin_get_settings':
+        case 'admin_save_settings':
+        case 'admin_announcements':
+        case 'admin_send_announcement':
+        case 'admin_activity_logs':
+        case 'admin_login_history':
+        case 'admin_profile_get':
+        case 'admin_profile_update':
+        case 'admin_upload_avatar':
+            require_once __DIR__ . '/includes/admin_api_handlers.php';
+            handleAdminApiAction($_POST['action']);
             break;
 
         case 'request_password_reset':

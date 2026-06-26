@@ -5,12 +5,16 @@ session_start();
 // Require user to be logged in
 requireLogin();
 
+$user_type = $_SESSION['user_type'] ?? 'driver';
+strgs_block_if_maintenance($user_type);
+
+$strgs_settings = strgs_system_settings();
+
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
 $user_name = $_SESSION['user_name'] ?? 'User';
 $user_email = $_SESSION['user_email'] ?? 'user@example.com';
-$user_type = $_SESSION['user_type'] ?? 'driver';
 $user_type_label = getUserTypeLabel($user_type);
 
 $nav_sections = [];
@@ -39,10 +43,13 @@ switch ($user_type) {
         break;
     case 'administrator':
         $nav_sections = [
-            ['id' => 'dashboard', 'icon' => 'fa-tachometer-alt', 'label' => 'Dashboard'],
-            ['id' => 'settings', 'icon' => 'fa-users', 'label' => 'User Management'],
-            ['id' => 'reports', 'icon' => 'fa-file-alt', 'label' => 'Reports'],
-            ['id' => 'analytics', 'icon' => 'fa-cog', 'label' => 'System Settings'],
+            ['id' => 'dashboard', 'icon' => 'fa-tachometer-alt', 'label' => 'Home'],
+            ['id' => 'users', 'icon' => 'fa-users', 'label' => 'User Management'],
+            ['id' => 'traffic-monitoring', 'icon' => 'fa-traffic-light', 'label' => 'Traffic Monitoring'],
+            ['id' => 'system', 'icon' => 'fa-cog', 'label' => 'System Management'],
+            ['id' => 'notifications', 'icon' => 'fa-bell', 'label' => 'Notifications'],
+            ['id' => 'activity-logs', 'icon' => 'fa-history', 'label' => 'Activity Logs'],
+            ['id' => 'profile', 'icon' => 'fa-user', 'label' => 'Profile'],
         ];
         break;
     default:
@@ -83,6 +90,9 @@ $assetV = static function (string $relPath): string {
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
     <link rel="stylesheet" href="<?php echo htmlspecialchars($assetV('static/driver-dashboard.css')); ?>">
     <link rel="stylesheet" href="<?php echo htmlspecialchars($assetV('static/authority-dashboard.css')); ?>">
+    <?php elseif ($user_type === 'administrator'): ?>
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($assetV('static/driver-dashboard.css')); ?>">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($assetV('static/admin-dashboard.css')); ?>">
     <?php endif; ?>
 
     <style>
@@ -751,6 +761,8 @@ $assetV = static function (string $relPath): string {
                 <?php include __DIR__ . '/includes/driver_dashboard.php'; ?>
             <?php elseif ($user_type === 'traffic_authority'): ?>
                 <?php include __DIR__ . '/includes/traffic_authority_dashboard.php'; ?>
+            <?php elseif ($user_type === 'administrator'): ?>
+                <?php include __DIR__ . '/includes/admin_dashboard.php'; ?>
             <?php else: ?>
             <!-- Dashboard Section -->
             <div id="dashboard-section" class="content-section">
@@ -945,6 +957,7 @@ $assetV = static function (string $relPath): string {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script>window.STRGS_SYSTEM_SETTINGS = <?php echo json_encode($strgs_settings, JSON_UNESCAPED_SLASHES); ?>;</script>
 
     <?php if ($user_type === 'driver'): ?>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -956,6 +969,8 @@ $assetV = static function (string $relPath): string {
     <script>window.STRGS_ROAD_STATUS_MODE = 'authority';</script>
     <script src="<?php echo htmlspecialchars($assetV('static/road-status.js')); ?>"></script>
     <script src="<?php echo htmlspecialchars($assetV('static/authority-dashboard.js')); ?>"></script>
+    <?php elseif ($user_type === 'administrator'): ?>
+    <script src="<?php echo htmlspecialchars($assetV('static/admin-dashboard.js')); ?>"></script>
     <?php else: ?>
     <script>
         const STRGS_USER_TYPE = <?php echo json_encode($user_type); ?>;

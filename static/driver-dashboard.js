@@ -54,8 +54,33 @@
         max_zoom: 18
     };
 
+    function getSystemMapCenter() {
+        const s = window.STRGS_SYSTEM_SETTINGS || {};
+        const lat = parseFloat(s.map_center_lat);
+        const lng = parseFloat(s.map_center_lng);
+        if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+            return { lat: lat, lng: lng };
+        }
+        return { lat: -1.9536, lng: 30.1065 };
+    }
+
+    function getSystemMapZoom() {
+        const zoom = parseInt((window.STRGS_SYSTEM_SETTINGS || {}).map_default_zoom, 10);
+        return Number.isNaN(zoom) ? 14 : zoom;
+    }
+
     function getRemeraConfig(config) {
-        return config || remeraMapConfig || DEFAULT_REMERa_MAP;
+        const base = config || remeraMapConfig || DEFAULT_REMERa_MAP;
+        const sys = window.STRGS_SYSTEM_SETTINGS || {};
+        const zone = sys.study_zone || base.zone;
+        const zoom = getSystemMapZoom();
+        return Object.assign({}, base, {
+            zone: zone,
+            center: getSystemMapCenter(),
+            label: zone + ', Kigali',
+            min_zoom: zoom,
+            max_zoom: Math.max(zoom, base.max_zoom || 18)
+        });
     }
 
     function getRemeraBoundsLatLng(config) {

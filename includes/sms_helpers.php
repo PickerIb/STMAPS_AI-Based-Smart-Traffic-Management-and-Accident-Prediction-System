@@ -45,6 +45,10 @@ function strgs_log_sms_attempt(array $payload, string $logFile = 'sms_alerts.log
 
 function strgs_send_sms(string $phone, string $message, ?array $smsConfig = null): array
 {
+    if (!strgs_system_settings_bool(strgs_system_settings()['sms_alerts_enabled'] ?? true)) {
+        return ['sent' => false, 'reason' => 'sms_alerts_disabled', 'phone' => $phone];
+    }
+
     $smsConfig = $smsConfig ?? strgs_get_sms_config();
 
     if (!is_array($smsConfig) || empty($smsConfig['enabled'])) {
@@ -74,6 +78,28 @@ function strgs_send_sms(string $phone, string $message, ?array $smsConfig = null
     } catch (Throwable $e) {
         return ['sent' => false, 'reason' => 'sms_exception', 'phone' => $phone, 'error' => $e->getMessage()];
     }
+}
+
+function strgs_count_sms_eligible_users(PDO $conn): int
+{
+    $stmt = $conn->prepare(
+        "SELECT phone_number
+         FROM users
+         WHERE is_active = 1
+           AND phone_number IS NOT NULL
+           AND TRIM(phone_number) <> ''"
+    );
+    $stmt->execute();
+
+    $seenPhones = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $phone = strgs_normalize_rwanda_phone((string)$row['phone_number']);
+        if ($phone !== false) {
+            $seenPhones[$phone] = true;
+        }
+    }
+
+    return count($seenPhones);
 }
 
 function strgs_count_sms_eligible_drivers(PDO $conn): int
@@ -195,5 +221,72 @@ function strgs_send_road_blockage_sms_to_drivers(PDO $conn, string $roadName, st
         'failed' => $failed,
         'skipped' => $skipped,
         'total_drivers' => count($drivers),
+    ];
+}
+
+function strgs_build_announcement_sms(string $title, string $message, bool $isEmergency = false): string
+{
+    $title = trim($title);
+    $message = trim($message);
+    $prefix = $isEmergency ? 'STRGS URGENT: ' : 'STRGS: ';
+    $body = $prefix . ($title !== '' ? $title . ' — ' : '') . $message;
+    if (strlen($body) > 480) {
+        $body = substr($body, 0, 477) . '...';
+    }
+    return $body;
+}
+
+function strgs_send_announcement_sms_to_users(PDO $conn, string $title, string $message, bool $isEmergency = false): array
+{
+    $stmt = $conn->prepare(
+        "SELECT id, first_name, last_name, phone_number, user_type
+         FROM users
+         WHERE is_active = 1
+           AND phone_number IS NOT NULL
+           AND TRIM(phone_number) <> ''"
+    );
+    $stmt->execute();
+
+    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $smsConfig = strgs_get_sms_config();
+    $smsBody = strgs_build_announcement_sms($title, $message, $isEmergency);
+
+    $sent = 0;
+    $failed = 0;
+    $skipped = 0;
+    $seenPhones = [];
+
+    foreach ($users as $user) {
+        $phone = strgs_normalize_rwanda_phone((string)$user['phone_number']);
+        if ($phone === false) {
+            $skipped++;
+            continue;
+        }
+        if (isset($seenPhones[$phone])) {
+            continue;
+        }
+        $seenPhones[$phone] = true;
+
+        $result = strgs_send_sms($phone, $smsBody, $smsConfig);
+        strgs_log_sms_attempt(array_merge([
+            'user_id' => (int)$user['id'],
+            'user_type' => (string)($user['user_type'] ?? ''),
+            'type' => $isEmergency ? 'admin_emergency_announcement' : 'admin_announcement',
+            'title' => $title,
+        ], $result), 'sms_announcements.log');
+
+        if (!empty($result['sent'])) {
+            $sent++;
+        } else {
+            $failed++;
+        }
+    }
+
+    return [
+        'sent' => $sent,
+        'failed' => $failed,
+        'skipped' => $skipped,
+        'total_users' => count($users),
+        'eligible_phones' => count($seenPhones),
     ];
 }

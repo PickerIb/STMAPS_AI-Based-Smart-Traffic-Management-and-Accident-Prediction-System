@@ -527,11 +527,14 @@ class DriverRouteService
 
     private function buildDriverNotificationPool(int $hours = 168): array
     {
+        $settings = strgs_system_settings();
+        $notificationsOn = !empty($settings['notifications_enabled']);
         $since = date('Y-m-d H:i:s', time() - ($hours * 3600));
         $items = [];
         $seen = [];
         $roadMinuteKeys = [];
 
+        if ($notificationsOn) {
         $readingStmt = $this->conn->prepare(
             "SELECT tr.id, tr.reading_time, tr.vehicle_count, tr.avg_speed_kmh, tr.weather, tr.source,
                     rs.id AS segment_id, rs.name AS segment_name, rs.zone, rs.speed_limit_kmh
@@ -638,6 +641,33 @@ class DriverRouteService
                 'time_label' => self::formatRelativeSeconds(max(0, time() - $ts)),
                 'sort_ts' => $ts,
             ];
+        }
+        }
+
+        $announcePath = dirname(__DIR__) . '/data/admin_announcements.json';
+        if (file_exists($announcePath)) {
+            $announcements = json_decode((string)file_get_contents($announcePath), true);
+            if (is_array($announcements)) {
+                foreach ($announcements as $ann) {
+                    $ts = self::parseReadingTimestamp((string)($ann['created_at'] ?? '')) ?? time();
+                    if ($ts < time() - ($hours * 3600)) {
+                        continue;
+                    }
+                    $items[] = [
+                        'id' => (string)($ann['id'] ?? 'ann-' . $ts),
+                        'kind' => 'announcement',
+                        'type' => 'system',
+                        'title' => (string)($ann['title'] ?? 'System announcement'),
+                        'severity' => (string)($ann['severity'] ?? 'info'),
+                        'message' => (string)($ann['message'] ?? ''),
+                        'segment_name' => null,
+                        'zone' => 'Remera Sector',
+                        'alert_time' => (string)($ann['created_at'] ?? ''),
+                        'time_label' => self::formatRelativeSeconds(max(0, time() - $ts)),
+                        'sort_ts' => $ts,
+                    ];
+                }
+            }
         }
 
         usort($items, static function (array $a, array $b): int {

@@ -1,0 +1,15 @@
+{
+    "app_name": "STRGS",
+    "timezone": "Africa/Kigali",
+    "study_zone": "Remera Sector",
+    "notifications_enabled": true,
+    "sms_alerts_enabled": true,
+    "map_center_lat": -1.9531,
+    "map_center_lng": 30.1065,
+    "map_default_zoom": 14,
+    "auto_refresh_seconds": 30,
+    "backup_auto_enabled": true,
+    "backup_retention_days": 30,
+    "session_timeout_minutes": 60,
+    "maintenance_mode": false
+}
